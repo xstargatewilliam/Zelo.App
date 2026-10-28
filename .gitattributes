@@ -1,0 +1,6 @@
+# Scripts do Windows precisam de quebra de linha CRLF para funcionar.
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+*.cs   text
+*.xaml text
+*.md   text

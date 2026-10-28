@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Zelo.Core</RootNamespace>
+    <AssemblyName>Zelo.Core</AssemblyName>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>
