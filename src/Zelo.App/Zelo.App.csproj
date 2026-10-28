@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- Windows Forms só para o ícone na bandeja (NotifyIcon). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Desligado de propósito: WPF + WinForms juntos geram nomes ambíguos. -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Zelo.App</RootNamespace>
+    <AssemblyName>Zelo.App</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zelo.Core\Zelo.Core.csproj" />
+  </ItemGroup>
+
+</Project>

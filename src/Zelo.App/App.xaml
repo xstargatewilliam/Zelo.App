@@ -1,0 +1,118 @@
+<Application x:Class="Zelo.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+
+        <!-- Paleta -->
+        <SolidColorBrush x:Key="Fundo" Color="#F3F5F2"/>
+        <SolidColorBrush x:Key="Cartao" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="Texto" Color="#17201B"/>
+        <SolidColorBrush x:Key="Suave" Color="#5E6A63"/>
+        <SolidColorBrush x:Key="Linha" Color="#E1E6E2"/>
+        <SolidColorBrush x:Key="Destaque" Color="#1E6B52"/>
+        <SolidColorBrush x:Key="DestaqueClaro" Color="#E3F0EA"/>
+        <SolidColorBrush x:Key="Perigo" Color="#B83232"/>
+        <SolidColorBrush x:Key="PerigoClaro" Color="#FBECEC"/>
+
+        <Style x:Key="Titulo" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="17"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,24,0,10"/>
+        </Style>
+
+        <Style x:Key="Rotulo" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Suave}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <Style x:Key="CartaoBorda" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Cartao}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Linha}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="16"/>
+        </Style>
+
+        <Style x:Key="Botao" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource Destaque}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fundo" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fundo" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Fundo" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Fundo" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BotaoSecundario" TargetType="Button" BasedOn="{StaticResource Botao}">
+            <Setter Property="Background" Value="{StaticResource Cartao}"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Linha}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Abas do topo -->
+        <Style x:Key="Aba" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource Suave}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,28,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <StackPanel Background="Transparent">
+                            <ContentPresenter Margin="0,0,0,10"/>
+                            <Border x:Name="Marca" Height="3" CornerRadius="2" Background="Transparent"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Marca" Property="Background" Value="{StaticResource Destaque}"/>
+                                <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Linha}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,6"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="8,5"/>
+        </Style>
+
+    </Application.Resources>
+</Application>
