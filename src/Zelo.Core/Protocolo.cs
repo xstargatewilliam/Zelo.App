@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Security.Principal;
 using System.Text;
 
 namespace Zelo.Core;
@@ -44,7 +45,9 @@ public static class ClientePipe
 {
     public static async Task<Resposta> EnviarAsync(Pedido pedido, int timeoutMs = 2500)
     {
-        using var pipe = new NamedPipeClientStream(".", Caminhos.NomePipe, PipeDirection.InOut, PipeOptions.Asynchronous);
+        using var pipe = new NamedPipeClientStream(".", Caminhos.NomePipe, PipeDirection.InOut, PipeOptions.Asynchronous,
+            // Identificação: o serviço só pode consultar quem é o usuário (para checar se é administrador), não agir em nome dele.
+            TokenImpersonationLevel.Identification);
         using var cts = new CancellationTokenSource(timeoutMs);
         await pipe.ConnectAsync(cts.Token);
 
