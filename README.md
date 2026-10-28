@@ -88,6 +88,11 @@ O resto acontece sozinho:
 - relatório;
 - opção de desativar.
 
+### Segurança
+
+- O serviço roda como SYSTEM; o painel roda como o usuário, sem elevação, e conversa com o serviço por um canal local (named pipe) que recusa conexões pela rede.
+- Qualquer usuário do PC pode ver o painel e disparar rotinas, mas **só administradores podem alterar as configurações** (elas decidem o que o serviço apaga e copia). Contas de administrador com UAC funcionam normalmente, sem precisar abrir o painel como administrador.
+
 ### Limitações conhecidas
 
 - Programas instalados só para um usuário podem não ser atualizados pelo winget, porque o serviço roda como SYSTEM.

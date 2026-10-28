@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Reflection;
 using System.Security.AccessControl;
+using System.Security.Claims;
 using System.Security.Principal;
 using System.Text;
 using Zelo.Core;
@@ -80,7 +81,7 @@ public sealed class ServidorPipe : BackgroundService
             try
             {
                 var pedido = Json.Desserializar<Pedido>(linha) ?? new Pedido();
-                resposta = Processar(pedido);
+                resposta = Processar(pedido, () => ClienteEhAdministrador(pipe));
             }
             catch (Exception ex)
             {
@@ -91,7 +92,36 @@ public sealed class ServidorPipe : BackgroundService
         catch { /* cliente desconectou */ }
     }
 
-    private Resposta Processar(Pedido p)
+    /// <summary>
+    /// Verifica, pelo token de quem conectou no pipe, se a pessoa é administradora do PC.
+    /// O painel roda sem elevação: num administrador com UAC, o grupo Administradores aparece
+    /// como "deny-only" no token, e isso também conta. Na dúvida, nega.
+    /// </summary>
+    private static bool ClienteEhAdministrador(NamedPipeServerStream pipe)
+    {
+        const string admins = "S-1-5-32-544";
+        bool resultado = false;
+        try
+        {
+            pipe.RunAsClient(() =>
+            {
+                // ifImpersonating: true → null se a personificação falhou (nunca cai no token do SYSTEM).
+                using var id = WindowsIdentity.GetCurrent(true);
+                if (id is null) return;
+                bool ativo = id.Groups?.Any(g => g.Value == admins) == true;
+                bool filtradoPeloUac = id.Claims.Any(c => c.Type == ClaimTypes.DenyOnlySid && c.Value == admins);
+                resultado = ativo || filtradoPeloUac;
+            });
+        }
+        catch (Exception ex)
+        {
+            Registro.Escrever("Não foi possível identificar quem conectou no painel: " + ex.Message);
+            return false;
+        }
+        return resultado;
+    }
+
+    private Resposta Processar(Pedido p, Func<bool> ehAdministrador)
     {
         switch (p.Comando)
         {
@@ -122,6 +152,12 @@ public sealed class ServidorPipe : BackgroundService
 
             case "config-salvar":
                 if (p.Config is null) return new Resposta { Ok = false, Mensagem = "Configuração vazia." };
+                // A configuração decide o que o serviço (SYSTEM) apaga e copia: só administradores alteram.
+                if (!ehAdministrador())
+                {
+                    Registro.Escrever("Alteração de configuração recusada: usuário sem permissão de administrador.");
+                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem alterar as configurações do Zelo." };
+                }
                 var erro = ValidarDestino(p.Config);
                 if (erro is not null) return new Resposta { Ok = false, Mensagem = erro };
                 ArmazemConfig.Salvar(p.Config);
