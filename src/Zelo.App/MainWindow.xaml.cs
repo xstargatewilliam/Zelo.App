@@ -35,6 +35,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        var versao = typeof(MainWindow).Assembly.GetName().Version;
+        TxtSobreVersao.Text = $"Zelo {versao?.ToString(3) ?? "1.0.0"}";
         for (int h = 0; h <= 23; h++) CmbHoraInicio.Items.Add($"{h:00}h");
         for (int h = 1; h <= 24; h++) CmbHoraFim.Items.Add($"{h:00}h");
         ListaTarefasConfig.ItemsSource = Catalogo.Todas.Select(t => new ItemTarefaConfig
@@ -443,6 +445,12 @@ public partial class MainWindow : Window
         foreach (var p in d.FolderNames)
             if (!atuais.Contains(p, StringComparer.OrdinalIgnoreCase)) atuais.Add(p);
         TxtPastas.Text = string.Join(Environment.NewLine, atuais);
+    }
+
+    private void Link_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
     }
 
     private void EscolherDestino_Click(object sender, RoutedEventArgs e)

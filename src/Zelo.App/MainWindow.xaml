@@ -325,6 +325,19 @@
                     <Button Content="Descartar alterações" Style="{StaticResource BotaoSecundario}" Margin="10,0,0,0" Click="RecarregarConfig_Click"/>
                     <TextBlock x:Name="TxtStatusConfig" VerticalAlignment="Center" Margin="16,0,0,0" Style="{StaticResource Rotulo}"/>
                 </StackPanel>
+
+                <TextBlock Text="Sobre" Style="{StaticResource Titulo}" Margin="0,36,0,10"/>
+                <Border Style="{StaticResource CartaoBorda}">
+                    <StackPanel>
+                        <TextBlock x:Name="TxtSobreVersao" FontWeight="SemiBold" Text="Zelo"/>
+                        <TextBlock Text="Criado por William Stargate" Margin="0,4,0,0"/>
+                        <TextBlock Style="{StaticResource Rotulo}" Margin="0,8,0,0">
+                            <Run Text="Código-fonte, novidades e versões:"/>
+                            <Hyperlink NavigateUri="https://github.com/xstargatewilliam/Zelo.App" RequestNavigate="Link_RequestNavigate">github.com/xstargatewilliam/Zelo.App</Hyperlink>
+                        </TextBlock>
+                        <TextBlock Text="Licença MIT." Style="{StaticResource Rotulo}" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
     </Grid>

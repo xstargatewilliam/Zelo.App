@@ -63,6 +63,7 @@ public static class Relatorio
                 sb.Append($"<details{((r.Status is StatusTarefa.Critico or StatusTarefa.Aviso) ? " open" : "")}><summary>Detalhes</summary><pre>{H(string.Join("\n", r.Detalhes))}</pre></details>");
             sb.Append("</section>");
         }
+        sb.Append("<p class=\"sub\" style=\"margin-top:28px\">Gerado pelo Zelo · criado por William Stargate · github.com/xstargatewilliam/Zelo.App</p>");
         sb.Append("</main></body></html>");
         return sb.ToString();
     }

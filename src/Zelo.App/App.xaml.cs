@@ -58,7 +58,7 @@ public partial class App : Application
         _icone = new Forms.NotifyIcon
         {
             Icon = System.Drawing.SystemIcons.Shield,
-            Text = "Zelo — Manutenção do Windows",
+            Text = "Zelo — Manutenção do Windows, por William Stargate",
             Visible = true,
             ContextMenuStrip = menu,
         };

@@ -1,0 +1,10 @@
+<Project>
+  <!-- Dados de autoria gravados em todos os executáveis do Zelo (Propriedades > Detalhes no Windows). -->
+  <PropertyGroup>
+    <Product>Zelo</Product>
+    <Authors>William Stargate</Authors>
+    <Company>William Stargate</Company>
+    <Copyright>Copyright (c) 2026 William Stargate</Copyright>
+    <RepositoryUrl>https://github.com/xstargatewilliam/Zelo.App</RepositoryUrl>
+  </PropertyGroup>
+</Project>

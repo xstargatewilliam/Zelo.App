@@ -19,7 +19,7 @@ function Falhar($texto) {
 }
 
 try {
-    Write-Host "Zelo - Manutenção do Windows" -ForegroundColor Green
+    Write-Host "Zelo - Manutenção do Windows, por William Stargate" -ForegroundColor Green
     Write-Host "Instalação em 4 etapas. Pode levar alguns minutos na primeira vez."
 
     $rid = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'win-arm64' } else { 'win-x64' }

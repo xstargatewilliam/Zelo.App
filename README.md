@@ -68,6 +68,10 @@ Num Terminal **como administrador**:
 
 Troque `diaria` por `semanal` ou `mensal`, e tire `--simulacao` para executar de verdade.
 
+## Autor
+
+Criado por **William Stargate** ([@xstargatewilliam](https://github.com/xstargatewilliam)). Distribuído sob a [licença MIT](LICENSE).
+
 ## Estrutura do código
 
 ```
