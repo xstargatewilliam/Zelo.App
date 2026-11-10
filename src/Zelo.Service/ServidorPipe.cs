@@ -134,6 +134,7 @@ public sealed class ServidorPipe : BackgroundService
             case "executar":
                 if (p.Rotina is null) return new Resposta { Ok = false, Mensagem = "Rotina não informada." };
                 if (_motor.Ocupado) return new Resposta { Ok = false, Mensagem = "Já existe uma rotina em andamento." };
+                if (Atualizador.EmAndamento) return new Resposta { Ok = false, Mensagem = "O Zelo está se atualizando. Tente de novo em alguns minutos." };
                 var rotina = p.Rotina.Value;
                 var sim = p.Simulacao;
                 _ = Task.Run(async () =>
@@ -142,6 +143,21 @@ public sealed class ServidorPipe : BackgroundService
                     catch (Exception ex) { Registro.Escrever("Erro na execução manual: " + ex); }
                 });
                 return new Resposta { Mensagem = $"Rotina {rotina.Nome()} iniciada{(sim ? " em modo simulação" : "")}." };
+
+            case "atualizar":
+                // Instala código novo como SYSTEM: só administradores.
+                if (!ehAdministrador())
+                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem atualizar o Zelo." };
+                if (_motor.Ocupado)
+                    return new Resposta { Ok = false, Mensagem = "Espere a rotina em andamento terminar para atualizar." };
+                if (Atualizador.EmAndamento)
+                    return new Resposta { Mensagem = "A atualização já está em andamento." };
+                _ = Task.Run(async () =>
+                {
+                    try { Registro.Escrever("Atualização manual: " + await Atualizador.VerificarEAplicarAsync(true, _vida.ApplicationStopping)); }
+                    catch (Exception ex) { Registro.Escrever("Erro na atualização manual: " + ex.Message); }
+                });
+                return new Resposta { Mensagem = "Procurando atualização no GitHub..." };
 
             case "cancelar":
                 _motor.Cancelar();
@@ -218,6 +234,11 @@ public sealed class ServidorPipe : BackgroundService
             NaTomada = Nativo.NaTomada(),
             UltimaExecucaoId = historico.LastOrDefault()?.Id,
         };
+        var atu = Atualizador.LerEstado();
+        e.VersaoDisponivel = atu.VersaoDisponivel;
+        e.UltimaVerificacaoAtualizacao = atu.UltimaVerificacao;
+        e.ErroAtualizacao = atu.UltimoErro;
+        e.Atualizando = Atualizador.EmAndamento;
         foreach (var (r, quando) in ultimas)
         {
             e.Ultima[r.ToString()] = quando;

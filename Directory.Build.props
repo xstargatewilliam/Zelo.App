@@ -2,6 +2,9 @@
   <!-- Dados de autoria gravados em todos os executáveis do Zelo (Propriedades > Detalhes no Windows). -->
   <PropertyGroup>
     <Product>Zelo</Product>
+    <!-- Versão do Zelo. Subir este número e enviar para o GitHub publica a versão na página Releases,
+         e os PCs com atualização automática instalam sozinhos. -->
+    <Version>1.1.0</Version>
     <Authors>William Stargate</Authors>
     <Company>William Stargate</Company>
     <Copyright>Copyright (c) 2026 William Stargate</Copyright>

@@ -27,6 +27,8 @@ public sealed class Configuracao
     /// <summary>Instala drivers do Windows Update (exceto vídeo). Desligado por padrão.</summary>
     public bool InstalarDriversWU { get; set; } = false;
     public bool CriarPontoRestauracao { get; set; } = true;
+    /// <summary>Instala sozinho as versões novas publicadas na página Releases do GitHub.</summary>
+    public bool AtualizacaoAutomatica { get; set; } = true;
     public bool VarreduraCompletaDefender { get; set; } = true;
 
     // Quando rodar

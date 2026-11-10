@@ -28,6 +28,19 @@ Para remover: **`DESINSTALAR.bat`**. Seus arquivos de backup nunca são apagados
 - Vá em **Configurações → Backup** e escolha as pastas e o destino (de preferência um disco externo). Sem isso, a categoria Backup fica sempre em alerta, de propósito.
 - Antes de deixar rodar de verdade, use **Modo simulação** e clique em **Diária**, **Semanal** e **Mensal**. A simulação mostra o que cada tarefa faria, sem apagar, instalar ou alterar nada.
 
+## Atualização automática
+
+Uma vez por dia o serviço consulta a página **Releases** deste repositório. Quando sai uma versão nova, ele:
+
+1. baixa o `Zelo-win-x64.zip` direto do GitHub, por HTTPS;
+2. confere o pacote com o SHA-256 publicado junto (se não bater, cancela);
+3. para o serviço, troca os arquivos, guarda uma cópia da versão anterior e volta a ela se a cópia falhar;
+4. reinicia o serviço e reabre o painel na bandeja.
+
+Nunca atualiza no meio de uma rotina. Para desligar, desmarque **"Atualizar o Zelo sozinho..."** em Configurações → Atualizações e segurança; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização agora** (Configurações → Sobre) instala na hora. Só administradores podem atualizar.
+
+**Para quem mantém o projeto:** suba o número em `<Version>` no `Directory.Build.props` e envie para o GitHub. O GitHub Actions compila e publica a versão em Releases sozinho.
+
 ## O que cada rotina faz
 
 | Rotina | Tarefas |

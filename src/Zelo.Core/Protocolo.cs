@@ -7,7 +7,7 @@ namespace Zelo.Core;
 /// <summary>Pedido do painel para o serviço (uma linha JSON por conexão).</summary>
 public sealed class Pedido
 {
-    /// <summary>estado | historico | executar | cancelar | config-obter | config-salvar</summary>
+    /// <summary>estado | historico | executar | cancelar | config-obter | config-salvar | atualizar</summary>
     public string Comando { get; set; } = "";
     public Rotina? Rotina { get; set; }
     public bool Simulacao { get; set; }
@@ -38,6 +38,10 @@ public sealed class EstadoServico
     public Dictionary<string, DateTime> Proxima { get; set; } = new();
     public bool NaTomada { get; set; }
     public string? UltimaExecucaoId { get; set; }
+    public string? VersaoDisponivel { get; set; }
+    public DateTime? UltimaVerificacaoAtualizacao { get; set; }
+    public string? ErroAtualizacao { get; set; }
+    public bool Atualizando { get; set; }
 }
 
 /// <summary>Cliente usado pelo painel.</summary>

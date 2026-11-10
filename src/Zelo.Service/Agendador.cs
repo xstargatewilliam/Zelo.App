@@ -45,9 +45,18 @@ public sealed class Agendador : BackgroundService
 
     private async Task VerificarAsync(CancellationToken parar)
     {
-        if (_motor.Ocupado) return;
+        if (_motor.Ocupado || Atualizador.EmAndamento) return;
 
         var cfg = ArmazemConfig.Carregar();
+
+        // Uma consulta ao GitHub por dia; instala sozinha se a opção estiver ligada.
+        var ultimaConsulta = Atualizador.LerEstado().UltimaVerificacao;
+        if (ultimaConsulta is null || DateTime.Now - ultimaConsulta > TimeSpan.FromHours(20))
+        {
+            var msg = await Atualizador.VerificarEAplicarAsync(cfg.AtualizacaoAutomatica, parar);
+            Registro.Escrever("Atualização: " + msg);
+            if (Atualizador.EmAndamento || msg.StartsWith("Instalando")) return; // o serviço vai reiniciar
+        }
         var ultimas = Agenda.UltimasExecucoes(Historico.Carregar());
         var agora = DateTime.Now;
 

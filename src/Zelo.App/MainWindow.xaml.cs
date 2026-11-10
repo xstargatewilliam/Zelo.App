@@ -146,6 +146,16 @@ public partial class MainWindow : Window
         ListaAlertas.ItemsSource = alertas;
         TxtSemAlertas.Visibility = alertas.Count == 0 && s.Geral >= 0 ? Visibility.Visible : Visibility.Collapsed;
 
+        // Atualização
+        TxtAtualizacao.Text =
+            e.Atualizando ? "Atualizando o Zelo..." :
+            e.VersaoDisponivel is not null ? $"Nova versão disponível: {e.VersaoDisponivel} (você tem a {e.Versao})." :
+            e.ErroAtualizacao is not null ? $"Última consulta falhou: {e.ErroAtualizacao}" :
+            e.UltimaVerificacaoAtualizacao is not null ? $"Versão {e.Versao} é a mais recente (consultado {Formatar.Quando(e.UltimaVerificacaoAtualizacao)})." :
+            $"Versão {e.Versao}. Ainda não consultou o GitHub.";
+        BtnAtualizar.IsEnabled = !e.Atualizando && e.RotinaAtual is null;
+        BtnAtualizar.Content = e.VersaoDisponivel is not null ? "Atualizar agora" : "Procurar atualização agora";
+
         // Progresso
         bool rodando = e.RotinaAtual is not null;
         PainelBotoes.IsEnabled = !rodando;
@@ -350,6 +360,7 @@ public partial class MainWindow : Window
             ChkWU.IsChecked = c.InstalarWindowsUpdate;
             ChkWinget.IsChecked = c.AtualizarProgramasWinget;
             ChkDrivers.IsChecked = c.InstalarDriversWU;
+            ChkAutoUpdate.IsChecked = c.AtualizacaoAutomatica;
             ChkRestauracao.IsChecked = c.CriarPontoRestauracao;
             ChkDefenderCompleto.IsChecked = c.VarreduraCompletaDefender;
 
@@ -405,6 +416,7 @@ public partial class MainWindow : Window
             InstalarWindowsUpdate = ChkWU.IsChecked == true,
             AtualizarProgramasWinget = ChkWinget.IsChecked == true,
             InstalarDriversWU = ChkDrivers.IsChecked == true,
+            AtualizacaoAutomatica = ChkAutoUpdate.IsChecked == true,
             CriarPontoRestauracao = ChkRestauracao.IsChecked == true,
             VarreduraCompletaDefender = ChkDefenderCompleto.IsChecked == true,
             TarefasDesativadas = ((List<ItemTarefaConfig>)ListaTarefasConfig.ItemsSource).Where(i => !i.Ativa).Select(i => i.Id).ToList(),
@@ -445,6 +457,19 @@ public partial class MainWindow : Window
         foreach (var p in d.FolderNames)
             if (!atuais.Contains(p, StringComparer.OrdinalIgnoreCase)) atuais.Add(p);
         TxtPastas.Text = string.Join(Environment.NewLine, atuais);
+    }
+
+    private async void Atualizar_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "atualizar" });
+            TxtAtualizacao.Text = r.Mensagem ?? "";
+        }
+        catch (Exception ex)
+        {
+            TxtAtualizacao.Text = "Serviço indisponível: " + ex.Message;
+        }
     }
 
     private void Link_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)

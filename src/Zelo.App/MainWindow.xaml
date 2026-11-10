@@ -296,6 +296,7 @@
                         <CheckBox x:Name="ChkWU" Content="Instalar atualizações do Windows automaticamente (semanal)"/>
                         <CheckBox x:Name="ChkWinget" Content="Atualizar programas instalados com o winget (semanal)"/>
                         <CheckBox x:Name="ChkDrivers" Content="Instalar drivers pelo Windows Update (semanal; drivers de vídeo ficam com o software do fabricante)"/>
+                        <CheckBox x:Name="ChkAutoUpdate" Content="Atualizar o Zelo sozinho quando sair uma versão nova no GitHub"/>
                         <CheckBox x:Name="ChkRestauracao" Content="Criar ponto de restauração antes das atualizações"/>
                         <CheckBox x:Name="ChkDefenderCompleto" Content="Verificação completa do antivírus (mensal, pode levar horas)"/>
                     </StackPanel>
@@ -336,6 +337,11 @@
                             <Hyperlink NavigateUri="https://github.com/xstargatewilliam/Zelo.App" RequestNavigate="Link_RequestNavigate">github.com/xstargatewilliam/Zelo.App</Hyperlink>
                         </TextBlock>
                         <TextBlock Text="Licença MIT." Style="{StaticResource Rotulo}" Margin="0,4,0,0"/>
+                        <DockPanel Margin="0,14,0,0">
+                            <Button DockPanel.Dock="Right" x:Name="BtnAtualizar" Content="Procurar atualização agora" Style="{StaticResource BotaoSecundario}"
+                                    Padding="12,6" Margin="12,0,0,0" VerticalAlignment="Center" Click="Atualizar_Click"/>
+                            <TextBlock x:Name="TxtAtualizacao" Style="{StaticResource Rotulo}" VerticalAlignment="Center" Text="Atualizações: consultando..."/>
+                        </DockPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>

@@ -1,11 +1,11 @@
-# Compila o Zelo no Windows a cada envio e, quando uma versão é marcada (tag v1.0.0, v1.1.0...),
-# publica na página Releases um pacote já compilado, que instala sem precisar do .NET SDK.
+# Compila o Zelo no Windows a cada envio. Quando a <Version> do Directory.Build.props muda
+# para um número ainda não publicado, cria a versão na página Releases com o pacote já compilado
+# (que instala sem precisar do .NET SDK) e o .sha256 que a atualização automática confere.
 name: Compilar
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -22,6 +22,21 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Ler a versão
+        id: versao
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $v = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+          "numero=$v" >> $env:GITHUB_OUTPUT
+          $existe = $false
+          gh release view "v$v" 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { $existe = $true }
+          "publicada=$existe" >> $env:GITHUB_OUTPUT
+          Write-Host "Versão $v (já publicada: $existe)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Compilar serviço e painel (win-x64)
         shell: pwsh
         run: |
@@ -34,15 +49,24 @@ jobs:
           Copy-Item INSTALAR.bat, DESINSTALAR.bat, README.md, LICENSE -Destination pacote
           Copy-Item scripts -Destination pacote/scripts -Recurse
           Compress-Archive -Path pacote/* -DestinationPath Zelo-win-x64.zip
+          $h = (Get-FileHash Zelo-win-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "$h  Zelo-win-x64.zip" | Out-File -Encoding ascii -NoNewline Zelo-win-x64.zip.sha256
 
       - uses: actions/upload-artifact@v4
         with:
           name: Zelo-win-x64
-          path: Zelo-win-x64.zip
+          path: |
+            Zelo-win-x64.zip
+            Zelo-win-x64.zip.sha256
 
       - name: Publicar na página Releases
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && steps.versao.outputs.publicada == 'False'
         uses: softprops/action-gh-release@v2
         with:
-          files: Zelo-win-x64.zip
+          tag_name: v${{ steps.versao.outputs.numero }}
+          name: Zelo ${{ steps.versao.outputs.numero }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            Zelo-win-x64.zip
+            Zelo-win-x64.zip.sha256
           generate_release_notes: true

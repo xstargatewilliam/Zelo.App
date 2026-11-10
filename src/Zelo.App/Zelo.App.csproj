@@ -12,7 +12,6 @@
     <RootNamespace>Zelo.App</RootNamespace>
     <AssemblyName>Zelo.App</AssemblyName>
     <LangVersion>latest</LangVersion>
-    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
