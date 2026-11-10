@@ -22,34 +22,67 @@ try {
     Write-Host "Zelo - Manutenção do Windows" -ForegroundColor Green
     Write-Host "Instalação em 4 etapas. Pode levar alguns minutos na primeira vez."
 
-    # --- 1. SDK do .NET ----------------------------------------------------------
-    Etapa "1/4 Verificando o .NET SDK"
-    function Tem-Sdk {
-        try { $l = & dotnet --list-sdks 2>$null; return [bool]($l | Where-Object { $_ -match '^(1[0-9])\.' }) }
-        catch { return $false }
-    }
-    if (-not (Tem-Sdk)) {
-        Write-Host "O .NET 10 SDK não foi encontrado. Instalando pelo winget..."
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            winget install --id Microsoft.DotNet.SDK.10 -e --source winget --accept-source-agreements --accept-package-agreements
-            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-        }
-        if (-not (Tem-Sdk)) {
-            Falhar "Instale o .NET 10 SDK manualmente em https://dotnet.microsoft.com/download/dotnet/10.0 e rode o INSTALAR.bat de novo."
-        }
-    }
-    Write-Host "OK: $((& dotnet --version))"
-
-    # --- 2. Compilação -----------------------------------------------------------
-    Etapa "2/4 Compilando"
     $rid = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'win-arm64' } else { 'win-x64' }
     $pub = Join-Path $raiz 'publicado'
-    if (Test-Path $pub) { Remove-Item $pub -Recurse -Force }
+    $preCompilado = (Test-Path "$pub\Servico\Zelo.Service.exe") -and (Test-Path "$pub\Painel\Zelo.App.exe") -and -not (Test-Path "$raiz\src")
 
-    & dotnet publish "$raiz\src\Zelo.Service\Zelo.Service.csproj" -c Release -r $rid --self-contained true -o "$pub\Servico" --nologo
-    if ($LASTEXITCODE -ne 0) { Falhar "A compilação do serviço falhou. Copie as mensagens acima e me envie." }
-    & dotnet publish "$raiz\src\Zelo.App\Zelo.App.csproj" -c Release -r $rid --self-contained true -o "$pub\Painel" --nologo
-    if ($LASTEXITCODE -ne 0) { Falhar "A compilação do painel falhou. Copie as mensagens acima e me envie." }
+    if ($preCompilado) {
+        # Pacote da página Releases do GitHub: já vem compilado, não precisa do .NET.
+        Etapa "1/4 Versão já compilada encontrada"
+        Write-Host "OK: o .NET SDK não é necessário."
+        Etapa "2/4 Compilação dispensada"
+    }
+    else {
+        # --- 1. SDK do .NET ------------------------------------------------------
+        Etapa "1/4 Verificando o .NET SDK"
+        function Tem-Sdk {
+            try { $l = & dotnet --list-sdks 2>$null; return [bool]($l | Where-Object { $_ -match '^(1[0-9])\.' }) }
+            catch { return $false }
+        }
+        function Atualizar-Path {
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        }
+
+        if (-not (Tem-Sdk) -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Host "O .NET 10 SDK não foi encontrado. Instalando pelo winget..."
+            winget install --id Microsoft.DotNet.SDK.10 -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
+            Atualizar-Path
+            if (-not (Tem-Sdk)) {
+                # Erro comum (0x8a15000f): a lista de pacotes do winget está corrompida. Recriar e tentar de novo.
+                Write-Host "O winget falhou. Recriando as fontes do winget e tentando de novo..." -ForegroundColor Yellow
+                winget source reset --force --disable-interactivity | Out-Null
+                winget source update --disable-interactivity | Out-Null
+                winget install --id Microsoft.DotNet.SDK.10 -e --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
+                Atualizar-Path
+            }
+        }
+
+        if (-not (Tem-Sdk)) {
+            # Plano B: script oficial da Microsoft, sem depender do winget.
+            Write-Host "Instalando o .NET 10 SDK pelo instalador oficial da Microsoft (dot.net)..." -ForegroundColor Yellow
+            $dirDotnet = Join-Path $env:ProgramFiles 'dotnet'
+            $scriptDotnet = Join-Path $env:TEMP 'dotnet-install.ps1'
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $scriptDotnet
+            & $scriptDotnet -Channel 10.0 -InstallDir $dirDotnet
+            $env:Path = "$dirDotnet;" + $env:Path
+            $env:DOTNET_ROOT = $dirDotnet
+        }
+
+        if (-not (Tem-Sdk)) {
+            Falhar "Não foi possível instalar o .NET 10 SDK. Instale manualmente em https://dotnet.microsoft.com/download/dotnet/10.0 e rode o INSTALAR.bat de novo. Ou baixe a versão já compilada na página Releases do repositório."
+        }
+        Write-Host "OK: $((& dotnet --version))"
+
+        # --- 2. Compilação -------------------------------------------------------
+        Etapa "2/4 Compilando"
+        if (Test-Path $pub) { Remove-Item $pub -Recurse -Force }
+
+        & dotnet publish "$raiz\src\Zelo.Service\Zelo.Service.csproj" -c Release -r $rid --self-contained true -o "$pub\Servico" --nologo
+        if ($LASTEXITCODE -ne 0) { Falhar "A compilação do serviço falhou. Copie as mensagens acima e abra uma issue no GitHub do Zelo." }
+        & dotnet publish "$raiz\src\Zelo.App\Zelo.App.csproj" -c Release -r $rid --self-contained true -o "$pub\Painel" --nologo
+        if ($LASTEXITCODE -ne 0) { Falhar "A compilação do painel falhou. Copie as mensagens acima e abra uma issue no GitHub do Zelo." }
+    }
 
     # --- 3. Instalação -----------------------------------------------------------
     Etapa "3/4 Instalando em $env:ProgramFiles\Zelo"

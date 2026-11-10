@@ -1,0 +1,48 @@
+# Compila o Zelo no Windows a cada envio e, quando uma versão é marcada (tag v1.0.0, v1.1.0...),
+# publica na página Releases um pacote já compilado, que instala sem precisar do .NET SDK.
+name: Compilar
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compilar serviço e painel (win-x64)
+        shell: pwsh
+        run: |
+          dotnet publish src/Zelo.Service/Zelo.Service.csproj -c Release -r win-x64 --self-contained true -o pacote/publicado/Servico --nologo
+          dotnet publish src/Zelo.App/Zelo.App.csproj -c Release -r win-x64 --self-contained true -o pacote/publicado/Painel --nologo
+
+      - name: Montar o pacote
+        shell: pwsh
+        run: |
+          Copy-Item INSTALAR.bat, DESINSTALAR.bat, README.md, LICENSE -Destination pacote
+          Copy-Item scripts -Destination pacote/scripts -Recurse
+          Compress-Archive -Path pacote/* -DestinationPath Zelo-win-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Zelo-win-x64
+          path: Zelo-win-x64.zip
+
+      - name: Publicar na página Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Zelo-win-x64.zip
+          generate_release_notes: true

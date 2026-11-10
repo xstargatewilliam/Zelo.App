@@ -4,6 +4,10 @@ Serviço do Windows + painel gráfico que cuida da manutenção do PC sozinho, t
 
 ## Instalação (uma vez)
 
+**Jeito mais fácil:** na página **Releases** do repositório, baixe o `Zelo-win-x64.zip` mais recente. Ele já vem compilado: extraia, dê dois cliques em **`INSTALAR.bat`** e pronto, sem precisar do .NET.
+
+**A partir do código-fonte:**
+
 1. Extraia o zip numa pasta qualquer (ex.: `Documentos\Zelo`).
 2. Dê dois cliques em **`INSTALAR.bat`** e aceite o pedido de administrador.
 3. O script faz tudo:
