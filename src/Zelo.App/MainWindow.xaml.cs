@@ -148,7 +148,13 @@ public partial class MainWindow : Window
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (PaginaInicio is null || PaginaHistorico is null || PaginaAjustes is null) return;
+        if (PaginaInicio is null || PaginaHistorico is null || PaginaAjustes is null || PaginaOtimizar is null) return;
+        PaginaOtimizar.Visibility = NavOtimizar.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (NavOtimizar.IsChecked == true)
+        {
+            EntrarPagina(ConteudoOtimizar);
+            if (!ModoCaptura && !_otimCarregado) _ = CarregarOtimizacaoAsync();
+        }
         PaginaInicio.Visibility = NavInicio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PaginaHistorico.Visibility = NavHistorico.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PaginaAjustes.Visibility = NavAjustes.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
@@ -168,6 +174,7 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
         if (pagina == "ajustes") NavAjustes.IsChecked = true;
+        else if (pagina == "otimizar") NavOtimizar.IsChecked = true;
         else if (pagina == "historico") NavHistorico.IsChecked = true;
         else NavInicio.IsChecked = true;
     }
@@ -1129,6 +1136,12 @@ public partial class MainWindow : Window
         Avancado_Click(this, new RoutedEventArgs());
         await Esperar();
         SalvarConteudo(ConteudoAjustes, System.IO.Path.Combine(pasta, "4-ajustes.png"));
+
+        NavOtimizar.IsChecked = true;
+        MontarOtimizacaoDeExemplo();
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "7-otimizar.png"));
+        SalvarConteudo(ConteudoOtimizar, System.IO.Path.Combine(pasta, "7b-otimizar-inteiro.png"));
 
         NavInicio.IsChecked = true;
         AbrirBoasVindas();

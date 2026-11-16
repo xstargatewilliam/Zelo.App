@@ -18,6 +18,9 @@ public sealed class Pedido
     /// <summary>Comandos "dispensar" e "executar-tarefa".</summary>
     public string? TarefaId { get; set; }
     public string? Motivo { get; set; }
+    /// <summary>Comandos "otimizar-aplicar" e "otimizar-desfazer".</summary>
+    public List<string>? Ids { get; set; }
+    public List<PerfilUso>? PerfisUso { get; set; }
 }
 
 public sealed class Resposta
@@ -27,6 +30,9 @@ public sealed class Resposta
     public EstadoServico? Estado { get; set; }
     public Configuracao? Config { get; set; }
     public List<ExecucaoRotina>? Historico { get; set; }
+    public List<EstadoAjuste>? Ajustes { get; set; }
+    public AndamentoOtimizacao? Otimizacao { get; set; }
+    public List<PerfilUso>? PerfisUso { get; set; }
 }
 
 public sealed class EstadoServico
@@ -57,7 +63,7 @@ public sealed class EstadoServico
 /// <summary>Cliente usado pelo painel.</summary>
 public static class ClientePipe
 {
-    public static async Task<Resposta> EnviarAsync(Pedido pedido, int timeoutMs = 2500)
+    public static async Task<Resposta> EnviarAsync(Pedido pedido, int timeoutMs = 2500, int esperaMs = 15000)
     {
         using var pipe = new NamedPipeClientStream(".", Caminhos.NomePipe, PipeDirection.InOut, PipeOptions.Asynchronous,
             // Identificação: o serviço só pode consultar quem é o usuário (para checar se é administrador), não agir em nome dele.
@@ -70,7 +76,7 @@ public static class ClientePipe
         using var leitor = new StreamReader(pipe, utf8, false, 65536, leaveOpen: true);
 
         await escritor.WriteLineAsync(Json.Serializar(pedido));
-        using var cts2 = new CancellationTokenSource(15000);
+        using var cts2 = new CancellationTokenSource(esperaMs);
         var linha = await leitor.ReadLineAsync(cts2.Token)
                     ?? throw new IOException("O serviço fechou a conexão sem responder.");
         return Json.Desserializar<Resposta>(linha) ?? throw new IOException("Resposta inválida do serviço.");

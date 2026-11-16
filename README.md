@@ -67,6 +67,15 @@ Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo*
 
 Ele não tem limpador de registro, "liberador de RAM", desfragmentação de SSD ou desativação de serviços. Essas coisas não trazem ganho real e podem quebrar o Windows. Programas na inicialização e drivers antigos são só **relatados**, nunca alterados.
 
+## Otimizar o Windows
+
+Na aba **Otimizar**, você escolhe como usa o PC (Jogos, Trabalho, Estudos, Edição e imagem, Programação e Dev — dá para marcar vários) e o Zelo já deixa marcados os ajustes recomendados para esses perfis. Você revisa, desmarca o que não quiser e aplica.
+
+- **Antes de mudar qualquer coisa**, o Zelo cria um ponto de restauração e anota como cada item estava. Cada ajuste tem o próprio botão **Desfazer**, e há um **Desfazer tudo**.
+- **O que ele faz**: remove apps de propaganda que vieram com o Windows (voltam pela Microsoft Store), tira sugestões e anúncios, reduz a telemetria ao obrigatório, ajusta desempenho e jogos, liga recursos úteis para quem programa e instala programas do perfil pelo winget.
+- **O que ele nunca faz**: desligar o Windows Update, o antivírus, o Firewall ou o Controle de Conta de Usuário; remover a Microsoft Store, o Edge ou partes do sistema; usar scripts de terceiros.
+- A seção **Avançado** mexe em áreas sensíveis sem desligar proteções (ex.: o Windows Update não reiniciar sozinho, verificação do antivírus mais leve, desligar a hibernação). Nada ali vem marcado.
+
 ## Onde ficam as coisas
 
 | O quê | Onde |
