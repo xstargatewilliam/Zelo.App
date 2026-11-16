@@ -47,7 +47,10 @@ public partial class MainWindow : Window
     /// <summary>Se verdadeiro, fechar a janela realmente fecha (em vez de ir para a bandeja).</summary>
     public bool Encerrando { get; set; }
 
-    private static bool Animar => SystemParameters.ClientAreaAnimation;
+    /// <summary>Modo de capturas de tela (CI): sem serviço, sem animações.</summary>
+    public static bool ModoCaptura { get; set; }
+
+    private static bool Animar => SystemParameters.ClientAreaAnimation && !ModoCaptura;
 
     private static string ArquivoBoasVindas => System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Zelo", "boas-vindas.ok");
@@ -100,6 +103,7 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             AjustarColunas();
+            if (ModoCaptura) return;
             EntrarPagina(ConteudoInicio);
             await AtualizarAsync();
             await CarregarConfigAsync();
@@ -973,5 +977,153 @@ public partial class MainWindow : Window
             File.WriteAllText(ArquivoBoasVindas, DateTime.Now.ToString("o", CultureInfo.InvariantCulture));
         }
         catch { }
+    }
+
+    // ================================================================ Capturas de tela (CI)
+
+    /// <summary>Preenche a tela com dados de exemplo e salva PNGs de cada tela. Usado só no GitHub Actions.</summary>
+    public async Task CapturarAsync(string pasta)
+    {
+        Directory.CreateDirectory(pasta);
+        var agora = DateTime.Now;
+        var cfg = new Configuracao
+        {
+            Perfil = "Trabalho", ExpedienteInicio = 22, ExpedienteFim = 6,
+            PastasBackup = new() { @"C:\Users\Ana\Documents", @"C:\Users\Ana\Pictures" },
+        };
+        cfg.Validar();
+        PreencherConfig(cfg);
+
+        ResultadoTarefa R(string id, string nome, Categoria c, StatusTarefa s, string resumo, double horas) => new()
+        {
+            TarefaId = id, Nome = nome, Categoria = c, Status = s, Resumo = resumo,
+            Inicio = agora.AddHours(-horas), Fim = agora.AddHours(-horas).AddSeconds(12),
+        };
+        _historico = Enumerable.Range(0, 12).Select(i => new ExecucaoRotina
+        {
+            Id = "ex" + i, Rotina = i % 4 == 0 ? Rotina.Semanal : Rotina.Diaria, Simulacao = i == 3,
+            Inicio = agora.AddDays(-(11 - i) * 2.5).AddMinutes(-3), Fim = agora.AddDays(-(11 - i) * 2.5),
+            Score = i == 0 ? 49 : (int)(70 + i * 1.5),
+            Resultados = new()
+            {
+                R("defender-rapida", "Antivírus", Categoria.Seguranca, StatusTarefa.Ok, "Protegido por Malwarebytes.", 2),
+                R("espaco-disco", "Espaço livre em disco", Categoria.Disco, i > 5 ? StatusTarefa.Aviso : StatusTarefa.Ok, "O disco A: está quase cheio: restam 15,7 GB (86% em uso).", 2),
+            },
+        }).ToList();
+        MostrarHistorico();
+
+        var saude = new PainelSaude
+        {
+            Geral = 84, Cobertura = 5,
+            Areas = new()
+            {
+                ["Disco"] = new ResumoArea { Status = StatusTarefa.Aviso, Texto = "O disco A: está quase cheio: restam 15,7 GB (86% em uso)." },
+                ["Seguranca"] = new ResumoArea { Status = StatusTarefa.Ok, Texto = "Protegido por Malwarebytes." },
+                ["Atualizacoes"] = new ResumoArea { Status = StatusTarefa.Ok, Texto = "Windows em dia, nenhuma atualização pendente." },
+                ["Backup"] = new ResumoArea { Status = StatusTarefa.Aviso, Texto = "Seus arquivos ainda não têm cópia." },
+                ["Sistema"] = new ResumoArea { Status = StatusTarefa.Ok, Texto = "7 erro(s) comum(ns), nada grave." },
+            },
+            Pontos = new()
+            {
+                new PontoAtencao { TarefaId = "backup-incremental", Nome = "Backup incremental", Categoria = Categoria.Backup, Status = StatusTarefa.Aviso, Resumo = "Seus arquivos ainda não têm cópia. Escolha as pastas e onde guardar em Ajustes.", Quando = agora.AddHours(-2) },
+                new PontoAtencao { TarefaId = "espaco-disco", Nome = "Espaço livre em disco", Categoria = Categoria.Disco, Status = StatusTarefa.Aviso, Resumo = "O disco A: está quase cheio: restam 15,7 GB (86% em uso).", Quando = agora.AddHours(-2) },
+            },
+        };
+        var estado = new EstadoServico
+        {
+            Versao = "1.2.0", Saude = saude, Perfil = cfg.Perfil, DentroDaJanela = true,
+            Ultima = new() { ["Diaria"] = agora.AddHours(-2), ["Semanal"] = agora.AddDays(-3), ["Mensal"] = agora.AddDays(-14) },
+            Proxima = new() { ["Diaria"] = agora.AddHours(18), ["Semanal"] = agora.AddDays(3.5), ["Mensal"] = agora.AddDays(15) },
+            UltimaVerificacaoAtualizacao = agora.AddHours(-1),
+        };
+        _estado = estado;
+
+        async Task Esperar()
+        {
+            UpdateLayout();
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            await Task.Delay(300);
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        }
+
+        NavInicio.IsChecked = true;
+        MostrarEstado(estado);
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "1-inicio.png"));
+        SalvarConteudo(ConteudoInicio, System.IO.Path.Combine(pasta, "1b-inicio-inteiro.png"));
+
+        var rodando = Json.Desserializar<EstadoServico>(Json.Serializar(estado))!;
+        rodando.RotinaAtual = Rotina.Diaria; rodando.Indice = 4; rodando.Total = 7; rodando.TarefaAtual = "Procurando erros graves no sistema";
+        rodando.Etapas = new()
+        {
+            new EtapaAtual { Nome = "Conferindo o antivírus", Status = StatusTarefa.Ok, Resumo = "Protegido por Malwarebytes.", Segundos = 3 },
+            new EtapaAtual { Nome = "Checando a saúde dos discos", Status = StatusTarefa.Ok, Resumo = "2 disco(s) saudável(is).", Segundos = 11 },
+            new EtapaAtual { Nome = "Medindo o espaço livre", Status = StatusTarefa.Aviso, Resumo = "O disco A: está quase cheio." },
+            new EtapaAtual { Nome = "Procurando erros graves no sistema", EmAndamento = true },
+            new EtapaAtual { Nome = "Vendo se o Windows pediu para reiniciar" },
+            new EtapaAtual { Nome = "Limpando arquivos temporários antigos" },
+            new EtapaAtual { Nome = "Copiando seus arquivos (backup)" },
+        };
+        MostrarEstado(rodando);
+        await Esperar();
+        MostrarEstado(rodando); // a barra de progresso usa a largura já medida
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "2-cuidando.png"));
+        MostrarEstado(estado);
+
+        NavHistorico.IsChecked = true;
+        await Esperar();
+        DesenharGrafico(animar: false);
+        if (ListaGrupos.ItemsSource is List<GrupoExecucoes> g && g.Count > 0 && g[0].Itens.Count > 0) g[0].Itens[0].Expandido = true;
+        await Esperar();
+        SalvarConteudo(ConteudoHistorico, System.IO.Path.Combine(pasta, "3-historico.png"));
+
+        NavAjustes.IsChecked = true;
+        BtnAvancado.IsChecked = true;
+        Avancado_Click(this, new RoutedEventArgs());
+        await Esperar();
+        SalvarConteudo(ConteudoAjustes, System.IO.Path.Combine(pasta, "4-ajustes.png"));
+
+        NavInicio.IsChecked = true;
+        AbrirBoasVindas();
+        BvTrabalho.IsChecked = true;
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "5-boas-vindas.png"));
+        _passoBv = 2; MostrarPassoBv();
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "6-boas-vindas-backup.png"));
+    }
+
+    private static void SalvarPng(Visual alvo, string arquivo)
+    {
+        var el = (FrameworkElement)alvo;
+        int w = (int)Math.Ceiling(el.ActualWidth), h = (int)Math.Ceiling(el.ActualHeight);
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(Math.Max(1, w), Math.Max(1, h), 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(alvo);
+        Gravar(rtb, arquivo);
+    }
+
+    /// <summary>Renderiza o conteúdo inteiro de uma página (além da parte visível), com o fundo.</summary>
+    private void SalvarConteudo(FrameworkElement el, string arquivo)
+    {
+        int w = (int)Math.Ceiling(el.ActualWidth + 80), h = (int)Math.Ceiling(el.ActualHeight + 80);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle((Brush)FindResource("Noite"), null, new Rect(0, 0, w, h));
+            dc.DrawRectangle(new VisualBrush(el) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top },
+                null, new Rect(40, 40, el.ActualWidth, el.ActualHeight));
+        }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(Math.Max(1, w), Math.Max(1, h), 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        Gravar(rtb, arquivo);
+    }
+
+    private static void Gravar(System.Windows.Media.Imaging.BitmapSource bmp, string arquivo)
+    {
+        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+        using var fs = File.Create(arquivo);
+        enc.Save(fs);
     }
 }

@@ -26,6 +26,28 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Modo usado no GitHub Actions: gera capturas das telas com dados de exemplo e sai.
+        if (e.Args.Length >= 2 && e.Args[0] == "--capturas")
+        {
+            MainWindow.ModoCaptura = true;
+            var janela = new MainWindow { Encerrando = true };
+            janela.Show();
+            janela.Dispatcher.InvokeAsync(async () =>
+            {
+                int codigo = 0;
+                try { await janela.CapturarAsync(e.Args[1]); }
+                catch (Exception ex)
+                {
+                    Directory.CreateDirectory(e.Args[1]);
+                    File.WriteAllText(System.IO.Path.Combine(e.Args[1], "erro.txt"), ex.ToString());
+                    codigo = 1;
+                }
+                janela.Close();
+                Shutdown(codigo);
+            }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            return;
+        }
+
         _instanciaUnica = new Mutex(true, @"Local\Zelo.Painel", out bool primeira);
         if (!primeira)
         {

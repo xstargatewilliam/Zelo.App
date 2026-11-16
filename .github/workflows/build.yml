@@ -45,6 +45,28 @@ jobs:
           dotnet publish src/Zelo.Service/Zelo.Service.csproj -c Release -r win-x64 --self-contained true -o pacote/publicado/Servico --nologo
           dotnet publish src/Zelo.App/Zelo.App.csproj -c Release -r win-x64 --self-contained true -o pacote/publicado/Painel --nologo
 
+      - name: Capturas das telas (só fora da main)
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath pacote/publicado/Painel/Zelo.App.exe -ArgumentList '--capturas', "$PWD/capturas" -Wait -PassThru
+          if (Test-Path capturas/erro.txt) { Get-Content capturas/erro.txt }
+          if ($p.ExitCode -ne 0) { Write-Error "O painel falhou ao abrir (código $($p.ExitCode))"; exit 1 }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          $dest = Join-Path $env:RUNNER_TEMP 'capturas-branch'
+          git worktree add --orphan -b capturas-tmp $dest 2>$null
+          if ($LASTEXITCODE -ne 0) { git worktree add --detach $dest; Push-Location $dest; git checkout --orphan capturas-tmp; Pop-Location }
+          Push-Location $dest
+          git rm -rfq . 2>$null
+          Copy-Item ../../capturas/* . -ErrorAction SilentlyContinue
+          Copy-Item "$env:GITHUB_WORKSPACE/capturas/*" .
+          git add -A
+          git commit -qm "Capturas de ${{ github.sha }}"
+          git push -f origin HEAD:capturas
+          Pop-Location
+          exit 0
+
       - name: Montar o pacote
         shell: pwsh
         run: |
