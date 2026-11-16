@@ -52,8 +52,8 @@
                     <ControlTemplate TargetType="ToggleButton">
                         <Border x:Name="Fundo" Background="{StaticResource Ceu}" BorderBrush="{StaticResource Linha}" BorderThickness="2" CornerRadius="12" Padding="14,12">
                             <Grid>
-                                <ContentPresenter Margin="0,0,18,0"/>
-                                <Border x:Name="Marca" Width="18" Height="18" CornerRadius="9" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                <ContentPresenter Margin="0,26,0,0"/>
+                                <Border x:Name="Marca" Width="18" Height="18" CornerRadius="9" HorizontalAlignment="Left" VerticalAlignment="Top"
                                         BorderBrush="{StaticResource LinhaForte}" BorderThickness="2">
                                     <Path x:Name="Visto" Data="M2,6 L5,9 L10,3" Stroke="{StaticResource Noite}" StrokeThickness="2" Width="12" Height="12"
                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed" Margin="1,1,0,0"/>
