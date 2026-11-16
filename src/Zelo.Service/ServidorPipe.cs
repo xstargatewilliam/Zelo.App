@@ -81,9 +81,12 @@ public sealed class ServidorPipe : BackgroundService
             try
             {
                 var pedido = Json.Desserializar<Pedido>(linha) ?? new Pedido();
+                string conta = "?";
+                bool EhAdmin() { var (admin, c) = Identificar(pipe); conta = c; return admin; }
                 resposta = pedido.Comando.StartsWith("otimizar-")
-                    ? await OtimizarAsync(pedido, pipe, parar)
-                    : Processar(pedido, () => ClienteEhAdministrador(pipe));
+                    ? await OtimizarAsync(pedido, pipe, EhAdmin, parar)
+                    : Processar(pedido, EhAdmin);
+                resposta = ExplicarRecusa(resposta, conta);
             }
             catch (Exception ex)
             {
@@ -95,14 +98,16 @@ public sealed class ServidorPipe : BackgroundService
     }
 
     /// <summary>
-    /// Verifica, pelo token de quem conectou no pipe, se a pessoa é administradora do PC.
-    /// O painel roda sem elevação: num administrador com UAC, o grupo Administradores aparece
-    /// como "deny-only" no token, e isso também conta. Na dúvida, nega.
+    /// Verifica se quem conectou no pipe é administrador do PC. O painel roda sem elevação, então
+    /// olhamos três coisas: o grupo Administradores ativo no token; o mesmo grupo como "deny-only"
+    /// (administrador com UAC); e, se o token não mostrar nenhum dos dois (como na "Proteção de
+    /// administrador" do Windows 11), a lista de membros do grupo Administradores do PC. Na dúvida, nega.
     /// </summary>
-    private static bool ClienteEhAdministrador(NamedPipeServerStream pipe)
+    private static (bool Admin, string Conta) Identificar(NamedPipeServerStream pipe)
     {
         const string admins = "S-1-5-32-544";
-        bool resultado = false;
+        bool ativo = false, filtrado = false;
+        string conta = "?", grupos = "";
         try
         {
             pipe.RunAsClient(() =>
@@ -110,17 +115,66 @@ public sealed class ServidorPipe : BackgroundService
                 // ifImpersonating: true → null se a personificação falhou (nunca cai no token do SYSTEM).
                 using var id = WindowsIdentity.GetCurrent(true);
                 if (id is null) return;
-                bool ativo = id.Groups?.Any(g => g.Value == admins) == true;
-                bool filtradoPeloUac = id.Claims.Any(c => c.Type == ClaimTypes.DenyOnlySid && c.Value == admins);
-                resultado = ativo || filtradoPeloUac;
+                conta = id.Name;
+                ativo = id.Groups?.Any(g => g.Value == admins) == true;
+                filtrado = id.Claims.Any(c => c.Type == ClaimTypes.DenyOnlySid && c.Value == admins);
+                grupos = string.Join(",", id.Claims.Where(c => c.Type is ClaimTypes.GroupSid or ClaimTypes.DenyOnlySid)
+                    .Select(c => c.Value).Where(v => v.StartsWith("S-1-5-32-")).Distinct());
             });
         }
         catch (Exception ex)
         {
             Registro.Escrever("Não foi possível identificar quem conectou no painel: " + ex.Message);
-            return false;
+            return (false, conta);
         }
-        return resultado;
+        if (ativo || filtrado) return (true, conta);
+
+        bool membro = conta != "?" && MembroDosAdministradores(conta);
+        if (!membro)
+            Registro.Escrever($"Pedido de administrador recusado para {conta} (grupos locais no token: {(grupos.Length == 0 ? "nenhum" : grupos)}).");
+        return (membro, conta);
+    }
+
+    [System.Runtime.InteropServices.DllImport("netapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int NetUserGetLocalGroups(string? servidor, string usuario, int nivel, int opcoes,
+        out IntPtr buffer, int maximo, out int lidos, out int total);
+
+    [System.Runtime.InteropServices.DllImport("netapi32.dll")]
+    private static extern int NetApiBufferFree(IntPtr buffer);
+
+    /// <summary>Consulta no próprio Windows se a conta está no grupo Administradores (direto ou por outro grupo).</summary>
+    private static bool MembroDosAdministradores(string conta)
+    {
+        try
+        {
+            var nomeGrupo = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Translate(typeof(NTAccount)).Value;
+            nomeGrupo = nomeGrupo[(nomeGrupo.IndexOf('\\') + 1)..];
+            const int LG_INCLUDE_INDIRECT = 1;
+            int r = NetUserGetLocalGroups(null, conta, 0, LG_INCLUDE_INDIRECT, out var buf, -1, out var lidos, out _);
+            if (r != 0 || buf == IntPtr.Zero) return false;
+            try
+            {
+                for (int i = 0; i < lidos; i++)
+                {
+                    var ptr = System.Runtime.InteropServices.Marshal.ReadIntPtr(buf, i * IntPtr.Size);
+                    var nome = System.Runtime.InteropServices.Marshal.PtrToStringUni(ptr);
+                    if (string.Equals(nome, nomeGrupo, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            }
+            finally { NetApiBufferFree(buf); }
+        }
+        catch (Exception ex)
+        {
+            Registro.Escrever("Não foi possível consultar o grupo Administradores: " + ex.Message);
+        }
+        return false;
+    }
+
+    private static Resposta ExplicarRecusa(Resposta r, string conta)
+    {
+        if (!r.Ok && r.Mensagem?.StartsWith("Só administradores") == true)
+            r.Mensagem += $"\n\nO Windows informou a conta {conta}, que não está no grupo Administradores deste PC.";
+        return r;
     }
 
     /// <summary>Quem está no painel (para os ajustes que valem só para essa pessoa).</summary>
@@ -139,7 +193,7 @@ public sealed class ServidorPipe : BackgroundService
         return sid;
     }
 
-    private async Task<Resposta> OtimizarAsync(Pedido p, NamedPipeServerStream pipe, CancellationToken parar)
+    private async Task<Resposta> OtimizarAsync(Pedido p, NamedPipeServerStream pipe, Func<bool> ehAdministrador, CancellationToken parar)
     {
         switch (p.Comando)
         {
@@ -157,7 +211,7 @@ public sealed class ServidorPipe : BackgroundService
             case "otimizar-aplicar":
             case "otimizar-desfazer":
                 // Muda o Windows como SYSTEM: só administradores.
-                if (!ClienteEhAdministrador(pipe))
+                if (!ehAdministrador())
                     return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem otimizar o Windows." };
                 if (_motor.Ocupado)
                     return new Resposta { Ok = false, Mensagem = "Espere a vistoria em andamento terminar." };
