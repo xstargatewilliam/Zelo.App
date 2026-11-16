@@ -305,17 +305,15 @@ public partial class MainWindow : Window
         }).ToList();
 
         // Pontos de atenção
-        var itens = pontos.Select(p =>
+        var itens = pontos.Select(p => new ItemPonto
         {
-            var (texto, id) = ItemPonto.AcaoPara(p.TarefaId);
-            return new ItemPonto
-            {
-                Titulo = p.Resumo,
-                Sub = $"{p.Nome} · {Palavras.Quando(p.Quando)}{(p.Desatualizado ? " · vale conferir de novo" : "")}",
-                Cor = Cores.De(p.Status), CorFundo = Cores.FundoDe(p.Status), Icone = Icones.De(p.Categoria),
-                AcaoTexto = texto, AcaoId = id,
-            };
+            Titulo = p.Resumo,
+            Sub = $"{p.Nome} · {Palavras.Quando(p.Quando)}{(p.Desatualizado ? " · vale conferir de novo" : "")}",
+            Cor = Cores.De(p.Status), CorFundo = Cores.FundoDe(p.Status), Icone = Icones.De(p.Categoria),
+            Acoes = ItemPonto.AcoesPara(p),
+            Detalhes = p.Detalhes.Select(ItemDetalheTexto.De).ToList(),
         }).ToList();
+        if (ModoCaptura) foreach (var i in itens.Where(i => i.Detalhes.Count > 0)) i.Expandido = true;
         ListaPontos.ItemsSource = itens;
         TxtSemPontos.Visibility = itens.Count == 0 && s.Geral >= 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -418,7 +416,9 @@ public partial class MainWindow : Window
             : $"Perfil Trabalho: o Zelo cuida do PC fora do seu expediente — das {Palavras.Hora(c.ExpedienteFim)} às {Palavras.Hora(c.ExpedienteInicio)} nos dias de trabalho"
               + (c.DiasExpediente.Count == 7 ? "." : ", e a qualquer hora nos outros dias."),
         "Jogos" => $"Perfil Jogos: o Zelo trabalha de madrugada, das {Configuracao.JogosInicio}h às {Configuracao.JogosFim}h, com o PC bem parado.",
-        _ => "O Zelo trabalha sempre que o PC está parado, a qualquer hora.",
+        _ => c is { ExigirOcioso: false }
+            ? "O Zelo trabalha a qualquer hora, assim que cada vistoria vence (com prioridade baixa)."
+            : "O Zelo trabalha sempre que o PC está parado, a qualquer hora.",
     };
 
     private void MostrarAtualizacao(EstadoServico e)
@@ -613,16 +613,42 @@ public partial class MainWindow : Window
         }
     }
 
-    private void AcaoPonto_Click(object sender, RoutedEventArgs e)
+    private async void AcaoPonto_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not string id || id.Length == 0) return;
         if (id == "zelo:backup")
         {
             NavAjustes.IsChecked = true;
             Dispatcher.BeginInvoke(new Action(() => TituloBackup.BringIntoView()), DispatcherPriority.Loaded);
-            return;
         }
-        Abrir(id);
+        else if (id.StartsWith("abrir:")) Abrir(id[6..]);
+        else if (id.StartsWith("cmd:"))
+        {
+            // Só programas do próprio Windows, definidos no código do painel.
+            var partes = id[4..].Split('|', 2);
+            try { Process.Start(new ProcessStartInfo(partes[0], partes.Length > 1 ? partes[1] : "") { UseShellExecute = true }); }
+            catch { }
+        }
+        else if (id.StartsWith("tarefa:"))
+        {
+            await EnviarComando(new Pedido { Comando = "executar-tarefa", TarefaId = id[7..] });
+            await AtualizarAsync();
+        }
+        else if (id.StartsWith("dispensar:"))
+        {
+            var partes = id[10..].Split('|', 2);
+            var motivo = partes.Length > 1 ? partes[1] : "";
+            try
+            {
+                var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "dispensar", TarefaId = partes[0], Motivo = motivo });
+                if (!r.Ok) { Aviso(r.Mensagem ?? "Não deu certo."); return; }
+                if (motivo == "queda de energia")
+                    Aviso("Anotado. Se as quedas de energia forem frequentes, um nobreak (UPS) protege o PC e evita perder arquivos abertos.");
+            }
+            catch (Exception ex) { Aviso("Não foi possível falar com o serviço do Zelo: " + ex.Message); }
+            _scoreMostrado = int.MinValue;
+            await AtualizarAsync();
+        }
     }
 
     private async Task EnviarComando(Pedido p)
@@ -693,6 +719,7 @@ public partial class MainWindow : Window
                 t.IsChecked = int.TryParse(t.Tag as string, out var d) && c.DiasExpediente.Contains(d);
             AtualizarResumoExpediente(c);
             ChkTomada.IsChecked = c.SomenteNaTomada;
+            ChkOcioso.IsChecked = c.ExigirOcioso;
 
             _pastas.Clear();
             foreach (var p in c.PastasBackup) _pastas.Add(new ItemPasta { Caminho = p });
@@ -763,6 +790,7 @@ public partial class MainWindow : Window
             .Select(t => int.Parse((string)t.Tag, CultureInfo.InvariantCulture))
             .OrderBy(d => d).ToList();
         c.SomenteNaTomada = ChkTomada.IsChecked == true;
+        c.ExigirOcioso = ChkOcioso.IsChecked == true;
 
         c.PastasBackup = _pastas.Select(p => p.Caminho).ToList();
 
@@ -1038,6 +1066,11 @@ public partial class MainWindow : Window
             },
             Pontos = new()
             {
+                new PontoAtencao { TarefaId = "auditoria-seguranca", Nome = "Auditoria de segurança", Categoria = Categoria.Seguranca, Status = StatusTarefa.Critico, Resumo = "Novo(s) administrador(es): StargatePC\\eusou.", Quando = agora.AddHours(-2) },
+                new PontoAtencao { TarefaId = "eventos-criticos", Nome = "Eventos críticos", Categoria = Categoria.Sistema, Status = StatusTarefa.Aviso, Resumo = "1× desligamento inesperado nas últimas 24 horas.", Quando = agora.AddHours(-2) },
+                new PontoAtencao { TarefaId = "inicializacao", Nome = "Programas que iniciam com o Windows", Categoria = Categoria.Sistema, Status = StatusTarefa.Aviso, Resumo = "2 programas novos passaram a abrir com o Windows: Discord e Steam.", Quando = agora.AddDays(-3),
+                    Detalhes = new() { "Novos desde a última revisão:", "NOVO · Discord (eusou) · instalado em 02/11/2026 — C:\\Users\\eusou\\AppData\\Local\\Discord\\Update.exe", "NOVO · Steam (eusou) · instalado em 10/11/2026 — C:\\Program Files (x86)\\Steam\\steam.exe", "Todos os que abrem com o Windows:", "SecurityHealth (todos) — C:\\Windows\\System32\\SecurityHealthSystray.exe" } },
+                new PontoAtencao { TarefaId = "winget", Nome = "Atualizar programas (winget)", Categoria = Categoria.Atualizacoes, Status = StatusTarefa.Erro, Resumo = "Interrompida após 90 minutos (tempo limite).", Quando = agora.AddDays(-3) },
                 new PontoAtencao { TarefaId = "backup-incremental", Nome = "Backup incremental", Categoria = Categoria.Backup, Status = StatusTarefa.Aviso, Resumo = "Seus arquivos ainda não têm cópia. Escolha as pastas e onde guardar em Ajustes.", Quando = agora.AddHours(-2) },
                 new PontoAtencao { TarefaId = "espaco-disco", Nome = "Espaço livre em disco", Categoria = Categoria.Disco, Status = StatusTarefa.Aviso, Resumo = "O disco A: está quase cheio: restam 15,7 GB (86% em uso).", Quando = agora.AddHours(-2) },
             },

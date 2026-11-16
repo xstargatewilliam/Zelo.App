@@ -170,7 +170,7 @@ public sealed class EventosCriticos : Tarefa
     public override Rotina[] Rotinas => new[] { Rotina.Diaria };
 
     private const string Script = """
-        $ini = (Get-Date).AddHours(-24)
+        $ini = (Get-Date).AddHours(-{{HORAS}})
         $ev = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1,2; StartTime = $ini } -ErrorAction SilentlyContinue)
         $r = $ev | Group-Object ProviderName, Id | Sort-Object Count -Descending | Select-Object -First 15 | ForEach-Object {
           $e = $_.Group[0]
@@ -206,7 +206,10 @@ public sealed class EventosCriticos : Tarefa
 
     protected override async Task<ResultadoTarefa> ExecutarInternoAsync(Contexto ctx, CancellationToken ct)
     {
-        var dados = await Executor.PowerShellJsonAsync(Script, ct);
+        // Depois que a pessoa dispensa o alerta, só contam eventos mais novos que a dispensa.
+        double horas = 24;
+        if (Dispensas.De(Id) is { } dispensa) horas = Math.Clamp((DateTime.Now - dispensa).TotalHours, 0.05, 24);
+        var dados = await Executor.PowerShellJsonAsync(Script.Replace("{{HORAS}}", horas.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)), ct);
         var total = (int)(dados.Num("Total") ?? 0);
         var det = new List<string>();
         var graves = new List<string>();

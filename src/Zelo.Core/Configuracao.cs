@@ -38,6 +38,8 @@ public sealed class Configuracao
     /// <summary>Hora (1-24) até a qual pode rodar. Se menor que HoraInicio, a janela atravessa a meia-noite.</summary>
     public int HoraFim { get; set; } = 24;
     public bool SomenteNaTomada { get; set; } = true;
+    /// <summary>Esperar o PC ficar parado antes de começar (desligado: começa assim que vencer, em prioridade baixa).</summary>
+    public bool ExigirOcioso { get; set; } = true;
     /// <summary>Perfil Trabalho: horário do expediente (0-23). O Zelo trabalha FORA dele. Pode atravessar a meia-noite (ex.: 22 às 6).</summary>
     public int ExpedienteInicio { get; set; } = 9;
     public int ExpedienteFim { get; set; } = 18;

@@ -159,6 +159,29 @@ public sealed class ServidorPipe : BackgroundService
                 });
                 return new Resposta { Mensagem = "Procurando atualização no GitHub..." };
 
+            case "dispensar":
+                if (string.IsNullOrWhiteSpace(p.TarefaId) || Catalogo.Todas.All(t => t.Id != p.TarefaId))
+                    return new Resposta { Ok = false, Mensagem = "Verificação desconhecida." };
+                // Dispensar alertas de segurança esconderia um problema real: só administradores.
+                if (!ehAdministrador())
+                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem dispensar alertas." };
+                Dispensas.Dispensar(p.TarefaId);
+                Registro.Escrever($"Alerta de {p.TarefaId} dispensado pelo usuário" + (string.IsNullOrWhiteSpace(p.Motivo) ? "." : $": {p.Motivo}"));
+                return new Resposta { Mensagem = "Anotado. O alerta sai da sua nota até a próxima verificação." };
+
+            case "executar-tarefa":
+                var tarefa = Catalogo.Todas.FirstOrDefault(t => t.Id == p.TarefaId);
+                if (tarefa is null) return new Resposta { Ok = false, Mensagem = "Verificação desconhecida." };
+                if (_motor.Ocupado) return new Resposta { Ok = false, Mensagem = "Já existe uma rotina em andamento." };
+                if (Atualizador.EmAndamento) return new Resposta { Ok = false, Mensagem = "O Zelo está se atualizando. Tente de novo em alguns minutos." };
+                var rotinaDaTarefa = tarefa.Rotinas[0];
+                _ = Task.Run(async () =>
+                {
+                    try { await _motor.ExecutarAsync(rotinaDaTarefa, false, "tarefa", _vida.ApplicationStopping, tarefa.Id); }
+                    catch (Exception ex) { Registro.Escrever("Erro ao repetir tarefa: " + ex); }
+                });
+                return new Resposta { Mensagem = $"Tentando de novo: {tarefa.Nome}." };
+
             case "pausar":
                 var minutos = Math.Clamp(p.Minutos, 0, 24 * 60);
                 Pausa.Definir(TimeSpan.FromMinutes(minutos));

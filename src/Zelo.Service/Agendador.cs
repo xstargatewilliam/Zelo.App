@@ -72,9 +72,12 @@ public sealed class Agendador : BackgroundService
             if (!cfg.DentroDaJanela(agora)) { Esperando(rotina, "fora do horário livre do perfil"); return; }
             if (cfg.SomenteNaTomada && !Nativo.NaTomada()) { Esperando(rotina, "notebook na bateria"); return; }
             // Rotinas pesadas exigem o PC parado por mais tempo antes de começar.
-            var amostra = TimeSpan.FromSeconds(rotina == Rotina.Diaria ? 10 : 45);
-            var cpu = await Nativo.UsoCpuAsync(amostra, parar);
-            if (cpu > cfg.LimiteCpuOcioso) { Esperando(rotina, $"PC em uso (CPU {cpu:0}%)"); return; }
+            if (cfg.ExigirOcioso)
+            {
+                var amostra = TimeSpan.FromSeconds(rotina == Rotina.Diaria ? 10 : 45);
+                var cpu = await Nativo.UsoCpuAsync(amostra, parar);
+                if (cpu > cfg.LimiteCpuOcioso) { Esperando(rotina, $"PC em uso (CPU {cpu:0}%)"); return; }
+            }
 
             await ExecutarVigiandoAsync(rotina, parar);
             return; // uma rotina por ciclo

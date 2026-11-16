@@ -389,29 +389,64 @@ public sealed class ProgramasInicializacao : Tarefa
 
     private sealed class Snapshot { public List<string> Itens { get; set; } = new(); }
 
+    /// <summary>Tira o executável de uma linha de comando ("C:\x\a.exe" --flag → C:\x\a.exe).</summary>
+    internal static string? Executavel(string comando)
+    {
+        comando = Environment.ExpandEnvironmentVariables(comando.Trim());
+        if (comando.StartsWith('"'))
+        {
+            int fim = comando.IndexOf('"', 1);
+            return fim > 1 ? comando[1..fim] : null;
+        }
+        int exe = comando.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+        return exe > 0 ? comando[..(exe + 4)] : comando.Split(' ')[0];
+    }
+
+    private static string Descrever(string nome, string usuario, string comando)
+    {
+        var exe = Executavel(comando);
+        string data = "";
+        try
+        {
+            if (exe is not null && File.Exists(exe))
+                data = $" · instalado em {File.GetCreationTime(exe):dd/MM/yyyy}";
+        }
+        catch { }
+        var quem = usuario.Contains("Public", StringComparison.OrdinalIgnoreCase) || usuario.Contains("SYSTEM", StringComparison.OrdinalIgnoreCase) || usuario.Length == 0
+            ? "todos os usuários" : usuario;
+        return $"{nome} ({quem}){data} — {exe ?? comando}";
+    }
+
     protected override async Task<ResultadoTarefa> ExecutarInternoAsync(Contexto ctx, CancellationToken ct)
     {
         var dados = await Executor.PowerShellJsonAsync(Script, ct);
         var atuais = dados.Itens()
-            .Select(i => new { Chave = i.Str("Nome") + "|" + i.Str("Comando"), Texto = $"{i.Str("Nome")} ({i.Str("Usuario")}) — {i.Str("Comando")}" })
+            .Select(i => new { Chave = i.Str("Nome") + "|" + i.Str("Comando"), Nome = i.Str("Nome"), Texto = Descrever(i.Str("Nome"), i.Str("Usuario"), i.Str("Comando")) })
             .GroupBy(x => x.Chave).Select(g => g.First())
+            .OrderBy(x => x.Nome, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var anterior = Estado.Ler<Snapshot>("inicializacao");
         if (!ctx.Simulacao) Estado.Gravar("inicializacao", new Snapshot { Itens = atuais.Select(a => a.Chave).ToList() });
 
-        var det = atuais.Select(a => a.Texto).ToList();
+        var novos = anterior is null ? new() : atuais.Where(a => !anterior.Itens.Contains(a.Chave)).ToList();
+        var det = new List<string>();
+        if (novos.Count > 0)
+        {
+            det.Add("Novos desde a última revisão:");
+            det.AddRange(novos.Select(n => "NOVO · " + n.Texto));
+            det.Add("Todos os que abrem com o Windows:");
+        }
+        det.AddRange(atuais.Select(a => a.Texto));
+
         if (anterior is null)
-            return Res(StatusTarefa.Ok, $"{atuais.Count} programa(s) iniciam com o Windows (primeira análise).", det);
-
-        var novos = atuais.Where(a => !anterior.Itens.Contains(a.Chave)).ToList();
+            return Res(StatusTarefa.Ok, $"{atuais.Count} programa(s) abrem com o Windows (primeira análise).", det);
         if (novos.Count == 0)
-            return Res(StatusTarefa.Ok, $"{atuais.Count} programa(s) na inicialização, nenhum novo.", det);
+            return Res(StatusTarefa.Ok, $"{atuais.Count} programa(s) abrem com o Windows, nenhum novo.", det);
 
-        det.Insert(0, "NOVOS desde a última verificação:");
-        det.InsertRange(1, novos.Select(n => "  + " + n.Texto));
+        var nomes = string.Join(", ", novos.Take(4).Select(n => n.Nome)) + (novos.Count > 4 ? $" e mais {novos.Count - 4}" : "");
         return Res(StatusTarefa.Aviso,
-            $"{novos.Count} programa(s) novo(s) passou(aram) a iniciar com o Windows. Se não reconhecer, desative no Gerenciador de Tarefas > Aplicativos de inicialização.",
+            (novos.Count == 1 ? "Um programa novo passou a abrir com o Windows: " : $"{novos.Count} programas novos passaram a abrir com o Windows: ") + nomes + ".",
             det);
     }
 }
