@@ -87,7 +87,7 @@ Troque `diaria` por `semanal` ou `mensal`, e tire `--simulacao` para executar de
 
 ## Autor
 
-Criado por **William Stargate** ([@xstargatewilliam](https://github.com/xstargatewilliam)). Distribuído sob a [licença MIT](LICENSE).
+Criado por **William Stargate** ([@stargaterequiem no X](https://x.com/stargaterequiem) · [@xstargatewilliam no GitHub](https://github.com/xstargatewilliam)). Distribuído sob a [licença MIT](LICENSE).
 
 ## Estrutura do código
 

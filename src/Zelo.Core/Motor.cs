@@ -109,6 +109,7 @@ public sealed class PontoAtencao
     public string Resumo { get; set; } = "";
     public bool Desatualizado { get; set; }
     public DateTime Quando { get; set; }
+    public List<string> Detalhes { get; set; } = new();
 }
 
 public sealed class ResumoArea
@@ -164,6 +165,19 @@ public static class Saude
                 if (r.Status == StatusTarefa.Ignorada) ultimos.Remove(r.TarefaId);
                 else ultimos[r.TarefaId] = (r, e.Rotina);
             }
+
+        // Alertas dispensados pela pessoa contam como resolvidos até a próxima verificação.
+        var dispensas = Dispensas.Todas();
+        foreach (var id in ultimos.Keys.ToList())
+        {
+            var (res, rot) = ultimos[id];
+            if (res.Status is StatusTarefa.Ok || !dispensas.TryGetValue(id, out var quando) || quando < res.Fim) continue;
+            ultimos[id] = (new ResultadoTarefa
+            {
+                TarefaId = res.TarefaId, Nome = res.Nome, Categoria = res.Categoria, Status = StatusTarefa.Ok,
+                Resumo = "Você marcou como resolvido.", Detalhes = res.Detalhes, Inicio = res.Inicio, Fim = res.Fim,
+            }, rot);
+        }
         if (desativadas is not null)
             foreach (var id in desativadas) ultimos.Remove(id);
 
@@ -218,6 +232,7 @@ public static class Saude
             {
                 TarefaId = res.TarefaId, Nome = res.Nome, Categoria = res.Categoria, Status = res.Status,
                 Resumo = res.Resumo, Desatualizado = agora - res.Fim > Validade(rotina), Quando = res.Fim,
+                Detalhes = res.Detalhes.Take(40).ToList(),
             });
 
         double soma = 0, pesos = 0;
@@ -280,7 +295,7 @@ public static class Agenda
     {
         var d = Enum.GetValues<Rotina>().ToDictionary(r => r, _ => (DateTime?)null);
         // Simulações e rotinas interrompidas não contam como feitas.
-        foreach (var e in historico.Where(h => !h.Simulacao && !h.Resultados.Any(r => r.TarefaId == "cancelada")))
+        foreach (var e in historico.Where(h => !h.Simulacao && h.Origem != "tarefa" && !h.Resultados.Any(r => r.TarefaId == "cancelada")))
             if (d[e.Rotina] is null || e.Fim > d[e.Rotina]) d[e.Rotina] = e.Fim;
         return d;
     }
@@ -349,7 +364,7 @@ public sealed class Motor
     }
 
     /// <summary>Retorna null se já houver uma rotina rodando.</summary>
-    public async Task<ExecucaoRotina?> ExecutarAsync(Rotina rotina, bool simulacao, string origem, CancellationToken ct)
+    public async Task<ExecucaoRotina?> ExecutarAsync(Rotina rotina, bool simulacao, string origem, CancellationToken ct, string? somenteTarefa = null)
     {
         if (!await _trava.WaitAsync(0, ct)) return null;
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -359,7 +374,9 @@ public sealed class Motor
         {
             var cfg = ArmazemConfig.Carregar();
             var ctx = new Contexto { Config = cfg, Simulacao = simulacao };
-            var tarefas = Catalogo.Da(rotina).ToList();
+            var tarefas = somenteTarefa is null
+                ? Catalogo.Da(rotina).ToList()
+                : Catalogo.Todas.Where(t => t.Id == somenteTarefa).ToList();
             var exec = new ExecucaoRotina { Rotina = rotina, Simulacao = simulacao, Origem = origem, Inicio = DateTime.Now };
 
             lock (_travaEtapas)
@@ -455,4 +472,24 @@ public static class Pausa
 
     public static void Definir(TimeSpan duracao) =>
         Estado.Gravar("pausa", new Dados { Ate = duracao > TimeSpan.Zero ? DateTime.Now + duracao : null });
+}
+
+/// <summary>
+/// Alertas que a pessoa marcou como resolvidos ("foi queda de energia", "o administrador sou eu").
+/// Um resultado dispensado deixa de pesar na nota até a próxima verificação daquela tarefa.
+/// </summary>
+public static class Dispensas
+{
+    private sealed class Dados { public Dictionary<string, DateTime> Quando { get; set; } = new(); }
+
+    public static Dictionary<string, DateTime> Todas() => Estado.Ler<Dados>("dispensas")?.Quando ?? new();
+
+    public static DateTime? De(string tarefaId) => Todas().TryGetValue(tarefaId, out var d) ? d : null;
+
+    public static void Dispensar(string tarefaId)
+    {
+        var d = Estado.Ler<Dados>("dispensas") ?? new Dados();
+        d.Quando[tarefaId] = DateTime.Now;
+        Estado.Gravar("dispensas", d);
+    }
 }

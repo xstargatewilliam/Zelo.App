@@ -160,29 +160,100 @@ public sealed class ItemArea
     public Geometry Icone { get; init; } = Icones.Pulado;
 }
 
-/// <summary>Um item de "Precisa da sua atenção".</summary>
-public sealed class ItemPonto
+/// <summary>Um botão de ação num ponto de atenção.</summary>
+public sealed class AcaoPonto
 {
+    public string Texto { get; init; } = "";
+    /// <summary>abrir:&lt;uri&gt; · cmd:&lt;exe&gt;|&lt;args&gt; · zelo:backup · dispensar:&lt;tarefa&gt;|&lt;motivo&gt; · tarefa:&lt;id&gt;</summary>
+    public string Id { get; init; } = "";
+}
+
+/// <summary>Um item de "Precisa da sua atenção".</summary>
+public sealed class ItemPonto : INotifyPropertyChanged
+{
+    private bool _expandido;
+
     public string Titulo { get; init; } = "";
     public string Sub { get; init; } = "";
     public Brush Cor { get; init; } = Cores.Ambar;
     public Brush CorFundo { get; init; } = Cores.AmbarFundo;
     public Geometry Icone { get; init; } = Icones.Atencao;
-    public string AcaoTexto { get; init; } = "";
-    public string AcaoId { get; init; } = "";
-    public Visibility VisAcao => string.IsNullOrEmpty(AcaoId) ? Visibility.Collapsed : Visibility.Visible;
+    public List<AcaoPonto> Acoes { get; init; } = new();
+    public List<ItemDetalheTexto> Detalhes { get; init; } = new();
 
-    /// <summary>O que o usuário pode fazer para cada verificação, quando há algo útil a oferecer.</summary>
-    public static (string texto, string id) AcaoPara(string tarefaId) => tarefaId switch
+    public Visibility VisAcoes => Acoes.Count > 0 || Detalhes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility VisBotaoDetalhes => Detalhes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public bool Expandido
     {
-        "espaco-disco" or "maiores-arquivos" => ("Ver o que ocupa espaço", "ms-settings:storagesense"),
-        "backup-incremental" or "verificar-backup" => ("Configurar backup", "zelo:backup"),
-        "defender-rapida" or "defender-completa" or "auditoria-seguranca" => ("Abrir Segurança do Windows", "windowsdefender:"),
-        "windows-update" or "reinicio-pendente" or "drivers-wu" => ("Abrir o Windows Update", "ms-settings:windowsupdate"),
-        "inicializacao" => ("Ver aplicativos de inicialização", "ms-settings:startupapps"),
-        "bateria" => ("Ver a bateria", "ms-settings:batterysaver"),
-        _ => ("", ""),
-    };
+        get => _expandido;
+        set
+        {
+            if (_expandido == value) return;
+            _expandido = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Expandido)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextoDetalhes)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VisDetalhes)));
+        }
+    }
+
+    public string TextoDetalhes => Expandido ? "Ocultar detalhes" : "Ver detalhes";
+    public Visibility VisDetalhes => Expandido ? Visibility.Visible : Visibility.Collapsed;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>O que a pessoa pode fazer, conforme a verificação e o que ela encontrou.</summary>
+    public static List<AcaoPonto> AcoesPara(PontoAtencao p)
+    {
+        var r = new List<AcaoPonto>();
+        void A(string texto, string id) => r.Add(new AcaoPonto { Texto = texto, Id = id });
+        string resumo = p.Resumo;
+        bool interrompida = resumo.Contains("Interrompida", StringComparison.OrdinalIgnoreCase) || p.Status == StatusTarefa.Erro;
+
+        switch (p.TarefaId)
+        {
+            case "auditoria-seguranca" when resumo.Contains("administrador", StringComparison.OrdinalIgnoreCase):
+                A("Gerenciar contas", "cmd:control.exe|/name Microsoft.UserAccounts /page pageAdminTasks");
+                A("São contas minhas", $"dispensar:{p.TarefaId}|administradores reconhecidos");
+                break;
+            case "auditoria-seguranca" or "defender-rapida" or "defender-completa":
+                A("Abrir Segurança do Windows", "abrir:windowsdefender:");
+                break;
+            case "eventos-criticos" when resumo.Contains("desligamento inesperado", StringComparison.OrdinalIgnoreCase):
+                A("Foi queda de energia", $"dispensar:{p.TarefaId}|queda de energia");
+                A("Fui eu que desliguei", $"dispensar:{p.TarefaId}|desligado pelo usuário");
+                A("Ver no Visualizador de Eventos", "cmd:eventvwr.msc|");
+                break;
+            case "eventos-criticos":
+                A("Ver no Visualizador de Eventos", "cmd:eventvwr.msc|");
+                A("Dispensar", $"dispensar:{p.TarefaId}|");
+                break;
+            case "espaco-disco" or "maiores-arquivos":
+                A("Ver o que ocupa espaço", "abrir:ms-settings:storagesense");
+                break;
+            case "backup-incremental" or "verificar-backup":
+                A("Configurar backup", "zelo:backup");
+                break;
+            case "inicializacao":
+                A("Ver aplicativos de inicialização", "abrir:ms-settings:startupapps");
+                A("Reconheço todos", $"dispensar:{p.TarefaId}|programas reconhecidos");
+                break;
+            case "windows-update" or "reinicio-pendente" or "drivers-wu":
+                if (interrompida || p.TarefaId != "reinicio-pendente") A("Tentar novamente", $"tarefa:{p.TarefaId}");
+                A("Abrir o Windows Update", "abrir:ms-settings:windowsupdate");
+                break;
+            case "bateria":
+                A("Ver a bateria", "abrir:ms-settings:batterysaver");
+                break;
+            default:
+                if (interrompida || p.TarefaId is "winget" or "otimizar-unidades" or "ponto-restauracao" or "integridade-sistema")
+                    A("Tentar novamente", $"tarefa:{p.TarefaId}");
+                break;
+        }
+        if (p.Status is StatusTarefa.Aviso && r.All(x => !x.Id.StartsWith("dispensar:")) && p.TarefaId is not ("backup-incremental" or "espaco-disco"))
+            A("Dispensar", $"dispensar:{p.TarefaId}|");
+        return r;
+    }
 }
 
 public sealed class ItemEtapa
@@ -290,7 +361,9 @@ public sealed class ItemExecucao : INotifyPropertyChanged
 
         return new ItemExecucao
         {
-            Titulo = $"{Palavras.Rotina(e.Rotina)} · {e.Inicio:HH:mm}",
+            Titulo = e.Origem == "tarefa"
+                ? $"Nova tentativa: {relevantes.FirstOrDefault()?.Nome ?? "verificação"} · {e.Inicio:HH:mm}"
+                : $"{Palavras.Rotina(e.Rotina)} · {e.Inicio:HH:mm}",
             Resumo = string.Join(" · ", partes),
             StatusTexto = status,
             Cor = e.Simulacao || interrompida ? Cores.Texto2 : Cores.De(pior),

@@ -65,8 +65,13 @@
                 </StackPanel>
                 <Border DockPanel.Dock="Bottom" Background="{StaticResource Ceu}" CornerRadius="10" Padding="12,10">
                     <StackPanel>
-                        <TextBlock x:Name="TxtVersaoMenu" Text="Zelo" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Texto2}"/>
-                        <TextBlock Text="Criado por William Stargate" FontSize="12" Foreground="{StaticResource Suave}"/>
+                        <TextBlock FontSize="12" FontWeight="SemiBold">
+                            <Hyperlink x:Name="LinkVersao" NavigateUri="https://github.com/xstargatewilliam/Zelo.App" RequestNavigate="Link_RequestNavigate"
+                                       Foreground="{StaticResource Texto2}" TextDecorations="{x:Null}" ToolTip="Abrir o repositório no GitHub"><Run x:Name="TxtVersaoMenu" Text="Zelo"/></Hyperlink>
+                        </TextBlock>
+                        <TextBlock FontSize="12" Foreground="{StaticResource Suave}">
+                            <Run Text="Criado por "/><Hyperlink NavigateUri="https://x.com/stargaterequiem" RequestNavigate="Link_RequestNavigate" Foreground="{StaticResource Luar}" TextDecorations="{x:Null}" ToolTip="William Stargate no X">William Stargate</Hyperlink>
+                        </TextBlock>
                     </StackPanel>
                 </Border>
                 <StackPanel DockPanel.Dock="Top">
@@ -301,17 +306,45 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Width="36" Height="36" CornerRadius="10" Background="{Binding CorFundo}" VerticalAlignment="Center">
+                                        <Border Width="36" Height="36" CornerRadius="10" Background="{Binding CorFundo}" VerticalAlignment="Top">
                                             <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding Cor}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{Binding Icone}"/>
                                         </Border>
-                                        <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center">
+                                        <StackPanel Grid.Column="1" Margin="16,0,0,0">
                                             <TextBlock Text="{Binding Titulo}" Style="{StaticResource TForte}" FontSize="15"/>
                                             <TextBlock Text="{Binding Sub}" Style="{StaticResource TSuave}" Margin="0,3,0,0"/>
+                                            <WrapPanel Margin="0,12,0,0" Visibility="{Binding VisAcoes}">
+                                                <ItemsControl ItemsSource="{Binding Acoes}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Content="{Binding Texto}" Tag="{Binding Id}" Style="{StaticResource BotaoSecundario}" MinHeight="38" FontSize="13" Padding="14,0" Margin="0,0,8,8" Click="AcaoPonto_Click"/>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <ToggleButton Style="{StaticResource BotaoAlternar}" IsChecked="{Binding Expandido, Mode=TwoWay}" Content="{Binding TextoDetalhes}"
+                                                              Visibility="{Binding VisBotaoDetalhes}" MinHeight="38" Margin="0,0,8,8" BorderThickness="0"/>
+                                            </WrapPanel>
+                                            <Border Visibility="{Binding VisDetalhes}" Background="{StaticResource Barra}" CornerRadius="8" Padding="14,10" Margin="0,4,0,0">
+                                                <ItemsControl ItemsSource="{Binding Detalhes}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid Margin="0,3">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Text="{Binding Texto}" FontSize="12.5" Foreground="{StaticResource Texto2}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                                                <Button Grid.Column="1" Content="Abrir site" Tag="{Binding Link}" Visibility="{Binding VisLink}" Style="{StaticResource BotaoLink}"
+                                                                        MinHeight="28" FontSize="12.5" Margin="8,0,0,0" Click="AbrirLink_Click"/>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Border>
                                         </StackPanel>
-                                        <Button Grid.Column="2" Content="{Binding AcaoTexto}" Tag="{Binding AcaoId}" Visibility="{Binding VisAcao}"
-                                                Style="{StaticResource BotaoSecundario}" VerticalAlignment="Center" Click="AcaoPonto_Click"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -520,6 +553,15 @@
                 </Border>
 
                 <Border Style="{StaticResource Cartao}" Padding="0" Margin="0,12,0,0">
+                    <StackPanel>
+                    <Border Style="{StaticResource LinhaAjuste}">
+                        <CheckBox x:Name="ChkOcioso" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
+                            <StackPanel>
+                                <TextBlock Text="Esperar o PC ficar parado" Style="{StaticResource TForte}"/>
+                                <TextBlock Text="Desligado, o Zelo começa assim que a vistoria vence, mesmo com você usando o PC (com prioridade baixa, para não atrapalhar). O horário do perfil continua valendo." Style="{StaticResource TSuave}"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </Border>
                     <Border Style="{StaticResource LinhaAjuste}" BorderThickness="0">
                         <CheckBox x:Name="ChkTomada" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
                             <StackPanel>
@@ -528,6 +570,7 @@
                             </StackPanel>
                         </CheckBox>
                     </Border>
+                    </StackPanel>
                 </Border>
 
                 <!-- Backup -->
@@ -720,8 +763,13 @@
                             </Grid.ColumnDefinitions>
                             <Image Source="Assets/zelo-256.png" Width="56" Height="56" RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Top"/>
                             <StackPanel Grid.Column="1" Margin="16,0,0,0">
-                                <TextBlock x:Name="TxtSobreVersao" Text="Zelo" Style="{StaticResource TForte}" FontSize="16"/>
-                                <TextBlock Text="Vigia o seu PC enquanto ele descansa. Criado por William Stargate." Style="{StaticResource TCorpo}" Margin="0,2,0,0"/>
+                                <TextBlock Style="{StaticResource TForte}" FontSize="16">
+                                    <Hyperlink NavigateUri="https://github.com/xstargatewilliam/Zelo.App/releases" RequestNavigate="Link_RequestNavigate" Foreground="{StaticResource Texto}" TextDecorations="{x:Null}"
+                                               ToolTip="Ver as versões no GitHub"><Run x:Name="TxtSobreVersao" Text="Zelo"/></Hyperlink>
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource TCorpo}" Margin="0,2,0,0">
+                                    <Run Text="Vigia o seu PC enquanto ele descansa. Criado por "/><Hyperlink NavigateUri="https://x.com/stargaterequiem" RequestNavigate="Link_RequestNavigate" Foreground="{StaticResource Luar}">William Stargate</Hyperlink><Run Text="."/>
+                                </TextBlock>
                                 <TextBlock Style="{StaticResource TSuave}" Margin="0,6,0,0">
                                     <Run Text="Código, novidades e versões:"/>
                                     <Hyperlink NavigateUri="https://github.com/xstargatewilliam/Zelo.App" RequestNavigate="Link_RequestNavigate" Foreground="{StaticResource Luar}">github.com/xstargatewilliam/Zelo.App</Hyperlink>

@@ -7,7 +7,7 @@ namespace Zelo.Core;
 /// <summary>Pedido do painel para o serviço (uma linha JSON por conexão).</summary>
 public sealed class Pedido
 {
-    /// <summary>estado | historico | executar | cancelar | config-obter | config-salvar | atualizar | pausar</summary>
+    /// <summary>estado | historico | executar | cancelar | config-obter | config-salvar | atualizar | pausar | dispensar | executar-tarefa</summary>
     public string Comando { get; set; } = "";
     public Rotina? Rotina { get; set; }
     public bool Simulacao { get; set; }
@@ -15,6 +15,9 @@ public sealed class Pedido
     public int Quantidade { get; set; } = 60;
     /// <summary>Comando "pausar": minutos de pausa (0 = retomar).</summary>
     public int Minutos { get; set; }
+    /// <summary>Comandos "dispensar" e "executar-tarefa".</summary>
+    public string? TarefaId { get; set; }
+    public string? Motivo { get; set; }
 }
 
 public sealed class Resposta
