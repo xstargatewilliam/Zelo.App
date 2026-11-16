@@ -81,7 +81,9 @@ public sealed class ServidorPipe : BackgroundService
             try
             {
                 var pedido = Json.Desserializar<Pedido>(linha) ?? new Pedido();
-                resposta = Processar(pedido, () => ClienteEhAdministrador(pipe));
+                resposta = pedido.Comando.StartsWith("otimizar-")
+                    ? await OtimizarAsync(pedido, pipe, parar)
+                    : Processar(pedido, () => ClienteEhAdministrador(pipe));
             }
             catch (Exception ex)
             {
@@ -119,6 +121,55 @@ public sealed class ServidorPipe : BackgroundService
             return false;
         }
         return resultado;
+    }
+
+    /// <summary>Quem está no painel (para os ajustes que valem só para essa pessoa).</summary>
+    private static string? SidDoCliente(NamedPipeServerStream pipe)
+    {
+        string? sid = null;
+        try
+        {
+            pipe.RunAsClient(() =>
+            {
+                using var id = WindowsIdentity.GetCurrent(true);
+                sid = id?.User?.Value;
+            });
+        }
+        catch { }
+        return sid;
+    }
+
+    private async Task<Resposta> OtimizarAsync(Pedido p, NamedPipeServerStream pipe, CancellationToken parar)
+    {
+        switch (p.Comando)
+        {
+            case "otimizar-estado":
+                return new Resposta
+                {
+                    Ajustes = await Otimizador.ListarAsync(SidDoCliente(pipe), parar),
+                    Otimizacao = Otimizador.Andamento,
+                    PerfisUso = Otimizador.Carregar().Perfis,
+                };
+
+            case "otimizar-andamento":
+                return new Resposta { Otimizacao = Otimizador.Andamento };
+
+            case "otimizar-aplicar":
+            case "otimizar-desfazer":
+                // Muda o Windows como SYSTEM: só administradores.
+                if (!ClienteEhAdministrador(pipe))
+                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem otimizar o Windows." };
+                if (_motor.Ocupado)
+                    return new Resposta { Ok = false, Mensagem = "Espere a vistoria em andamento terminar." };
+                if (Atualizador.EmAndamento)
+                    return new Resposta { Ok = false, Mensagem = "O Zelo está se atualizando. Tente de novo em alguns minutos." };
+                var desfazer = p.Comando == "otimizar-desfazer";
+                var erro = Otimizador.Iniciar(p.Ids ?? new(), p.PerfisUso ?? new(), SidDoCliente(pipe), desfazer, _vida.ApplicationStopping);
+                return erro is null
+                    ? new Resposta { Mensagem = desfazer ? "Desfazendo..." : "Aplicando...", Otimizacao = Otimizador.Andamento }
+                    : new Resposta { Ok = false, Mensagem = erro };
+        }
+        return new Resposta { Ok = false, Mensagem = $"Comando desconhecido: {p.Comando}" };
     }
 
     private Resposta Processar(Pedido p, Func<bool> ehAdministrador)

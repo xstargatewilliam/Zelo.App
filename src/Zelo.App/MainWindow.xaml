@@ -41,6 +41,45 @@
             </Setter>
         </Style>
 
+        <!-- Cartão que liga e desliga (perfis de uso, escolha múltipla). -->
+        <Style x:Key="CartaoAlternar" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Fundo" Background="{StaticResource Ceu}" BorderBrush="{StaticResource Linha}" BorderThickness="2" CornerRadius="12" Padding="14,12">
+                            <Grid>
+                                <ContentPresenter Margin="0,26,0,0"/>
+                                <Border x:Name="Marca" Width="18" Height="18" CornerRadius="9" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        BorderBrush="{StaticResource LinhaForte}" BorderThickness="2">
+                                    <Path x:Name="Visto" Data="M2,6 L5,9 L10,3" Stroke="{StaticResource Noite}" StrokeThickness="2" Width="12" Height="12"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed" Margin="1,1,0,0"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="#3A4560"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource Luar}"/>
+                                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Hover}"/>
+                                <Setter TargetName="Marca" Property="Background" Value="{StaticResource Luar}"/>
+                                <Setter TargetName="Marca" Property="BorderBrush" Value="{StaticResource Luar}"/>
+                                <Setter TargetName="Visto" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Linha de configuração com interruptor. -->
         <Style x:Key="LinhaAjuste" TargetType="Border">
             <Setter Property="Padding" Value="20,16"/>
@@ -89,6 +128,14 @@
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
                                   Data="M3,12 A9,9 0 1 0 6,5.3 L3,8 M3,3 L3,8 L8,8 M12,7 L12,12 L15,14"/>
                             <TextBlock Text="Histórico" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="NavOtimizar" GroupName="nav" Style="{StaticResource ItemMenu}" Checked="Nav_Checked" AutomationProperties.Name="Otimizar">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                  Data="M13,2 L4,14 L12,14 L11,22 L20,10 L12,10 Z"/>
+                            <TextBlock Text="Otimizar" Margin="12,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="NavAjustes" GroupName="nav" Style="{StaticResource ItemMenu}" Checked="Nav_Checked" AutomationProperties.Name="Ajustes">
@@ -486,6 +533,137 @@
                 </ItemsControl>
             </StackPanel>
         </ScrollViewer>
+
+        <!-- ======================= Otimizar ======================= -->
+        <Grid x:Name="PaginaOtimizar" Grid.Column="1" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="ConteudoOtimizar" Margin="40,32,40,32" MaxWidth="900" HorizontalAlignment="Left">
+                    <StackPanel.RenderTransform><TranslateTransform/></StackPanel.RenderTransform>
+                    <TextBlock Text="Otimizar o Windows" Style="{StaticResource TTitulo}"/>
+                    <TextBlock Text="Ajustes seguros para o seu jeito de usar o PC. Tudo pode ser desfeito." Style="{StaticResource TCorpo}" FontSize="15" Margin="0,6,0,0"/>
+
+                    <TextBlock Text="Como você usa o PC?" Style="{StaticResource TSecao}" FontSize="18"/>
+                    <TextBlock Text="Escolha quantos quiser. O Zelo já marca o que recomenda para cada um." Style="{StaticResource TSuave}" Margin="0,0,0,12"/>
+                    <UniformGrid Columns="5" Margin="0,0,-10,0">
+                            <ToggleButton x:Name="UsoJogos" Tag="Jogos" Style="{StaticResource CartaoAlternar}" Margin="0,0,10,0" Click="PerfilUso_Click" AutomationProperties.Name="Jogos">
+                                <StackPanel>
+                                    <TextBlock Text="Jogos" Style="{StaticResource TForte}" FontSize="14" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Mais desempenho, menos interrupção." Style="{StaticResource TSuave}" FontSize="12" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton x:Name="UsoTrabalho" Tag="Trabalho" Style="{StaticResource CartaoAlternar}" Margin="0,0,10,0" Click="PerfilUso_Click" AutomationProperties.Name="Trabalho">
+                                <StackPanel>
+                                    <TextBlock Text="Trabalho" Style="{StaticResource TForte}" FontSize="14" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Foco e produtividade." Style="{StaticResource TSuave}" FontSize="12" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton x:Name="UsoEstudos" Tag="Estudos" Style="{StaticResource CartaoAlternar}" Margin="0,0,10,0" Click="PerfilUso_Click" AutomationProperties.Name="Estudos">
+                                <StackPanel>
+                                    <TextBlock Text="Estudos" Style="{StaticResource TForte}" FontSize="14" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Leitura, anotações, menos distração." Style="{StaticResource TSuave}" FontSize="12" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton x:Name="UsoEdicao" Tag="Edicao" Style="{StaticResource CartaoAlternar}" Margin="0,0,10,0" Click="PerfilUso_Click" AutomationProperties.Name="Edição e imagem">
+                                <StackPanel>
+                                    <TextBlock Text="Edição e imagem" Style="{StaticResource TForte}" FontSize="14" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Desempenho e ferramentas criativas." Style="{StaticResource TSuave}" FontSize="12" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton x:Name="UsoDev" Tag="Dev" Style="{StaticResource CartaoAlternar}" Margin="0,0,10,0" Click="PerfilUso_Click" AutomationProperties.Name="Programação e Dev">
+                                <StackPanel>
+                                    <TextBlock Text="Programação e Dev" Style="{StaticResource TForte}" FontSize="14" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Ferramentas e ajustes de desenvolvedor." Style="{StaticResource TSuave}" FontSize="12" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </ToggleButton>
+                    </UniformGrid>
+
+                    <Border Background="{StaticResource Ceu}" CornerRadius="10" Padding="16,12" Margin="0,14,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Path Width="18" Height="18" Stretch="Uniform" Stroke="{StaticResource Aurora}" StrokeThickness="2" StrokeLineJoin="Round" VerticalAlignment="Top" Margin="0,2,0,0"
+                                  Data="M12,2 L20,5 L20,11 C20,16 16.5,20 12,22 C7.5,20 4,16 4,11 L4,5 Z M8.5,12 L11,14.5 L15.5,9.5"/>
+                            <TextBlock Grid.Column="1" Style="{StaticResource TCorpo}" FontSize="13" Margin="12,0,0,0" TextWrapping="Wrap"
+                                       Text="Antes de mudar qualquer coisa, o Zelo cria um ponto de restauração e anota como cada item estava, para desfazer um por um. Ele nunca desliga o Windows Update, o antivírus, o Firewall nem o Controle de Conta de Usuário, e não remove a Microsoft Store, o Edge nem partes do sistema."/>
+                        </Grid>
+                    </Border>
+
+                    <Grid Margin="0,22,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="TxtOtimStatus" Style="{StaticResource TSuave}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"/>
+                        <ToggleButton x:Name="ChkTodosPerfis" Grid.Column="1" Style="{StaticResource Ficha}" Content="Mostrar os de outros perfis" Click="TodosPerfis_Click" Margin="0"/>
+                    </Grid>
+
+                    <ItemsControl x:Name="ListaOtimizacao">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Titulo}" Style="{StaticResource TSecao}" FontSize="17"/>
+                                    <TextBlock Text="{Binding Sub}" Visibility="{Binding VisSub}" Style="{StaticResource TSuave}" Margin="0,0,0,10"/>
+                                    <Border Style="{StaticResource Cartao}" Padding="0">
+                                        <ItemsControl ItemsSource="{Binding Itens}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Style="{StaticResource LinhaAjuste}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Margin="0,0,16,0">
+                                                                <TextBlock Text="{Binding Nome}" Style="{StaticResource TForte}" TextWrapping="Wrap"/>
+                                                                <TextBlock Text="{Binding Descricao}" Style="{StaticResource TSuave}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="{Binding Aviso}" Visibility="{Binding VisAviso}" FontSize="12.5" Foreground="{StaticResource Ambar}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                                                <Border Visibility="{Binding VisRisco}" Background="{StaticResource AmbarFundo}" CornerRadius="6" Padding="8,2" Margin="0,6,0,0" HorizontalAlignment="Left">
+                                                                    <TextBlock Text="{Binding TextoRisco}" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource Ambar}"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <CheckBox Grid.Column="1" Style="{StaticResource Interruptor}" IsChecked="{Binding Selecionado, Mode=TwoWay}" Visibility="{Binding VisInterruptor}"
+                                                                      Click="AjusteOtim_Click" VerticalAlignment="Center" AutomationProperties.Name="{Binding Nome}"/>
+                                                            <StackPanel Grid.Column="1" Visibility="{Binding VisEstado}" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                                <TextBlock Text="{Binding TextoEstado}" FontSize="12.5" Foreground="{StaticResource Aurora}" HorizontalAlignment="Right"/>
+                                                                <Button Content="{Binding TextoDesfazer}" Tag="{Binding Id}" Visibility="{Binding VisDesfazer}" Style="{StaticResource BotaoLink}"
+                                                                        MinHeight="28" FontSize="12.5" HorizontalAlignment="Right" Click="DesfazerAjuste_Click"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="1" Background="{StaticResource Barra}" BorderBrush="{StaticResource Linha}" BorderThickness="0,1,0,0" Padding="40,14">
+                <Grid MaxWidth="900" HorizontalAlignment="Stretch">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                        <TextBlock x:Name="TxtOtimResumo" Style="{StaticResource TForte}"/>
+                        <TextBlock x:Name="TxtOtimProgresso" Style="{StaticResource TSuave}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button x:Name="BtnOtimDesfazerTudo" Grid.Column="1" Content="Desfazer tudo" Style="{StaticResource BotaoSecundario}" Margin="0,0,10,0"
+                            Visibility="Collapsed" Click="OtimDesfazerTudo_Click"/>
+                    <Button x:Name="BtnOtimAplicar" Grid.Column="2" Content="Aplicar" Style="{StaticResource BotaoPrimario}" MinWidth="150" Click="OtimAplicar_Click"/>
+                </Grid>
+            </Border>
+        </Grid>
 
         <!-- ======================= Ajustes ======================= -->
         <ScrollViewer x:Name="PaginaAjustes" Grid.Column="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
