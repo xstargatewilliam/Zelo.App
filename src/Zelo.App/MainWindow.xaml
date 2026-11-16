@@ -415,9 +415,26 @@
                                                                                 <ColumnDefinition Width="*"/>
                                                                             </Grid.ColumnDefinitions>
                                                                             <TextBlock Text="{Binding Rotulo}" Foreground="{Binding Cor}" FontSize="13" FontWeight="SemiBold"/>
-                                                                            <TextBlock Grid.Column="1" FontSize="13" TextWrapping="Wrap" LineHeight="19">
-                                                                                <Run Text="{Binding Nome, Mode=OneWay}" FontWeight="SemiBold"/><Run Text=": "/><Run Text="{Binding Resumo, Mode=OneWay}" Foreground="{StaticResource Texto2}"/>
-                                                                            </TextBlock>
+                                                                            <StackPanel Grid.Column="1">
+                                                                                <TextBlock FontSize="13" TextWrapping="Wrap" LineHeight="19">
+                                                                                    <Run Text="{Binding Nome, Mode=OneWay}" FontWeight="SemiBold"/><Run Text=": "/><Run Text="{Binding Resumo, Mode=OneWay}" Foreground="{StaticResource Texto2}"/>
+                                                                                </TextBlock>
+                                                                                <ItemsControl ItemsSource="{Binding Detalhes}" Visibility="{Binding VisDetalhes}" Margin="0,4,0,0">
+                                                                                    <ItemsControl.ItemTemplate>
+                                                                                        <DataTemplate>
+                                                                                            <Grid Margin="0,2">
+                                                                                                <Grid.ColumnDefinitions>
+                                                                                                    <ColumnDefinition Width="*"/>
+                                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                                </Grid.ColumnDefinitions>
+                                                                                                <TextBlock Text="{Binding Texto}" FontSize="12.5" Foreground="{StaticResource Suave}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                                                                                <Button Grid.Column="1" Content="Abrir site" Tag="{Binding Link}" Visibility="{Binding VisLink}" Style="{StaticResource BotaoLink}"
+                                                                                                        MinHeight="28" FontSize="12.5" Margin="8,0,0,0" Click="AbrirLink_Click"/>
+                                                                                            </Grid>
+                                                                                        </DataTemplate>
+                                                                                    </ItemsControl.ItemTemplate>
+                                                                                </ItemsControl>
+                                                                            </StackPanel>
                                                                         </Grid>
                                                                     </DataTemplate>
                                                                 </ItemsControl.ItemTemplate>

@@ -340,20 +340,79 @@ public sealed class DriversAntigos : Tarefa
         $lim = (Get-Date).AddYears(-4)
         $r = Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DriverDate -and $_.DriverDate -lt $lim -and $_.DeviceName -and $_.DriverProviderName -and $_.DriverProviderName -notmatch 'Microsoft' } |
           Sort-Object DriverDate | Select-Object -First 25 | ForEach-Object {
-            [pscustomobject]@{ Dispositivo = [string]$_.DeviceName; Fabricante = [string]$_.DriverProviderName; Versao = [string]$_.DriverVersion; Data = $_.DriverDate.ToString('dd/MM/yyyy') }
+            [pscustomobject]@{ Dispositivo = [string]$_.DeviceName; Fabricante = [string]$_.DriverProviderName; Versao = [string]$_.DriverVersion; Data = $_.DriverDate.ToString('dd/MM/yyyy'); Classe = [string]$_.DeviceClass }
           }
-        ConvertTo-Json -InputObject @($r) -Compress
+        $placa = Get-CimInstance Win32_BaseBoard -ErrorAction SilentlyContinue | Select-Object -First 1
+        $pc = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue | Select-Object -First 1
+        [pscustomobject]@{
+          Drivers = @($r)
+          PlacaFab = [string]$placa.Manufacturer; PlacaModelo = [string]$placa.Product
+          PcFab = [string]$pc.Manufacturer; PcModelo = [string]$pc.Model
+        } | ConvertTo-Json -Compress -Depth 4
         """;
+
+    /// <summary>Fabricantes de chip com ferramenta própria de atualização.</summary>
+    private static readonly (string chave, string onde, string link)[] Chips =
+    {
+        ("NVIDIA", "NVIDIA App", "https://www.nvidia.com/pt-br/software/nvidia-app/"),
+        ("Advanced Micro Devices", "AMD Software: Adrenalin / drivers de chipset AMD", "https://www.amd.com/pt/support/download/drivers.html"),
+        ("AMD", "AMD Software: Adrenalin / drivers de chipset AMD", "https://www.amd.com/pt/support/download/drivers.html"),
+        ("Intel", "Intel Driver & Support Assistant", "https://www.intel.com.br/content/www/br/pt/support/detect.html"),
+    };
+
+    /// <summary>Páginas de suporte dos fabricantes de placa-mãe e de PCs prontos.</summary>
+    private static readonly (string chave, string link)[] Fabricantes =
+    {
+        ("ASRock", "https://www.asrock.com/support/index.asp"),
+        ("ASUS", "https://www.asus.com/br/support/"),
+        ("Micro-Star", "https://br.msi.com/support"),
+        ("MSI", "https://br.msi.com/support"),
+        ("Gigabyte", "https://www.gigabyte.com/br/Support"),
+        ("Dell", "https://www.dell.com/support/home/pt-br"),
+        ("Lenovo", "https://pcsupport.lenovo.com/br/pt"),
+        ("HP", "https://support.hp.com/br-pt/drivers"),
+        ("Hewlett", "https://support.hp.com/br-pt/drivers"),
+        ("Acer", "https://www.acer.com/br-pt/support"),
+        ("Samsung", "https://www.samsung.com/br/support/"),
+        ("Positivo", "https://www.meupositivo.com.br/suporte"),
+    };
 
     protected override async Task<ResultadoTarefa> ExecutarInternoAsync(Contexto ctx, CancellationToken ct)
     {
         var dados = await Executor.PowerShellJsonAsync(Script, ct);
-        var det = dados.Itens()
-            .Select(d => $"{d.Str("Data")}  {d.Str("Dispositivo")} — {d.Str("Fabricante")} v{d.Str("Versao")}")
-            .ToList();
+        var drivers = dados.Itens("Drivers").ToList();
+        if (drivers.Count == 0) return Res(StatusTarefa.Ok, "Nenhum driver de fabricante com mais de 4 anos.");
+
+        // Drivers de áudio, rede, USB etc. (Realtek, por exemplo) vêm do fabricante da placa-mãe ou do PC.
+        string placa = $"{dados.Str("PlacaFab")} {dados.Str("PlacaModelo")}".Trim();
+        string pc = $"{dados.Str("PcFab")} {dados.Str("PcModelo")}".Trim();
+        bool pcDeMarca = Fabricantes.Any(f => dados.Str("PcFab").Contains(f.chave, StringComparison.OrdinalIgnoreCase))
+                         && !dados.Str("PcFab").Contains("ASRock", StringComparison.OrdinalIgnoreCase)
+                         && !dados.Str("PcFab").Contains("Micro-Star", StringComparison.OrdinalIgnoreCase)
+                         && !dados.Str("PcFab").Contains("Gigabyte", StringComparison.OrdinalIgnoreCase)
+                         && !dados.Str("PcFab").Contains("ASUS", StringComparison.OrdinalIgnoreCase);
+        string origem = pcDeMarca ? pc : placa;
+        string fabOrigem = pcDeMarca ? dados.Str("PcFab") : dados.Str("PlacaFab");
+        var site = Fabricantes.FirstOrDefault(f => fabOrigem.Contains(f.chave, StringComparison.OrdinalIgnoreCase)).link;
+
+        var det = new List<string>();
+        foreach (var d in drivers)
+        {
+            var fab = d.Str("Fabricante");
+            det.Add($"{d.Str("Dispositivo")} — {fab}, versão {d.Str("Versao")} de {d.Str("Data")}");
+            var chip = Chips.FirstOrDefault(c => fab.Contains(c.chave, StringComparison.OrdinalIgnoreCase));
+            if (chip.chave is not null)
+                det.Add($"   Onde atualizar: {chip.onde} — {chip.link}");
+            else if (site is not null)
+                det.Add($"   Onde atualizar: página de suporte da {(pcDeMarca ? "sua máquina" : "sua placa-mãe")} {origem} — {site}");
+            else if (origem.Length > 0)
+                det.Add($"   Onde atualizar: site do fabricante da {(pcDeMarca ? "sua máquina" : "placa-mãe")} ({origem}), na área de drivers do modelo.");
+        }
+        det.Insert(0, "O Zelo mostra a versão instalada e onde buscar a mais nova; a versão mais recente só o site do fabricante sabe. Driver antigo nem sempre é problema: atualize se algo estiver dando defeito.");
+        if (origem.Length > 0) det.Insert(1, $"Sua {(pcDeMarca ? "máquina" : "placa-mãe")}: {origem}");
+
         return Res(StatusTarefa.Ok,
-            det.Count == 0 ? "Nenhum driver de fabricante com mais de 4 anos." : $"{det.Count} driver(s) antigo(s) — vale conferir no site do fabricante (driver antigo nem sempre é problema).",
-            det);
+            $"{drivers.Count} driver(s) com mais de 4 anos. Veja nos detalhes a versão instalada e onde atualizar.", det);
     }
 }
 

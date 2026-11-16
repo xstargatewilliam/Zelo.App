@@ -60,7 +60,8 @@ Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo*
   - o notebook está na tomada (configurável);
   - o PC está ocioso (CPU baixa).
 - Se o PC ficou desligado, a rotina roda na próxima oportunidade.
-- Se passar 48h atrasada, ela ignora a janela e a ociosidade.
+- O horário do perfil (expediente, madrugada) é uma regra rígida: nunca é ignorado, por mais atrasada que a rotina esteja. Se o horário livre acabar no meio de uma rotina (por exemplo, você estendeu o expediente), ela é interrompida e volta no próximo horário livre.
+- O Zelo roda com prioridade baixa, para não disputar o processador com o que você está fazendo.
 
 ### O que o Zelo **não** faz (de propósito)
 

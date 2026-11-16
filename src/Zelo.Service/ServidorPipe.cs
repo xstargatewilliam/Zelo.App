@@ -167,7 +167,10 @@ public sealed class ServidorPipe : BackgroundService
 
             case "cancelar":
                 _motor.Cancelar();
-                return new Resposta { Mensagem = "Cancelamento solicitado. A tarefa atual será interrompida." };
+                // Sem isso, a rotina interrompida (que não conta como feita) recomeçaria minutos depois.
+                Pausa.Definir(TimeSpan.FromHours(2));
+                Registro.Escrever("Rotina interrompida pelo usuário; vistorias automáticas pausadas por 2 horas.");
+                return new Resposta { Mensagem = "Parando. As vistorias automáticas ficam pausadas por 2 horas." };
 
             case "config-obter":
                 return new Resposta { Config = ArmazemConfig.Carregar() };

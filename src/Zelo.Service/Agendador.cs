@@ -67,20 +67,44 @@ public sealed class Agendador : BackgroundService
             var proxima = Agenda.Proxima(rotina, ultimas[rotina]);
             if (agora < proxima) continue;
 
-            // Muito atrasada (ex.: PC sempre usado no horário da janela): relaxa as condições.
-            bool muitoAtrasada = agora - proxima > TimeSpan.FromHours(48);
-
-            if (!muitoAtrasada && !cfg.DentroDaJanela(agora)) { Esperando(rotina, "fora da janela de horário"); return; }
+            // O horário do perfil (expediente, madrugada) é uma regra rígida: nunca é ignorado,
+            // por mais atrasada que a rotina esteja. O mesmo vale para o PC estar em uso.
+            if (!cfg.DentroDaJanela(agora)) { Esperando(rotina, "fora do horário livre do perfil"); return; }
             if (cfg.SomenteNaTomada && !Nativo.NaTomada()) { Esperando(rotina, "notebook na bateria"); return; }
-            if (!muitoAtrasada)
-            {
-                var cpu = await Nativo.UsoCpuAsync(TimeSpan.FromSeconds(10), parar);
-                if (cpu > cfg.LimiteCpuOcioso) { Esperando(rotina, $"PC em uso (CPU {cpu:0}%)"); return; }
-            }
+            // Rotinas pesadas exigem o PC parado por mais tempo antes de começar.
+            var amostra = TimeSpan.FromSeconds(rotina == Rotina.Diaria ? 10 : 45);
+            var cpu = await Nativo.UsoCpuAsync(amostra, parar);
+            if (cpu > cfg.LimiteCpuOcioso) { Esperando(rotina, $"PC em uso (CPU {cpu:0}%)"); return; }
 
-            await _motor.ExecutarAsync(rotina, simulacao: false, origem: "agendada", parar);
+            await ExecutarVigiandoAsync(rotina, parar);
             return; // uma rotina por ciclo
         }
+    }
+
+    /// <summary>
+    /// Roda a rotina e, a cada 30 s, confere se ela ainda pode continuar. Se o horário livre acabar
+    /// (por exemplo, a pessoa estendeu o expediente) ou houver uma pausa, a rotina é interrompida
+    /// sem ser registrada como feita, e volta no próximo horário livre.
+    /// </summary>
+    private async Task ExecutarVigiandoAsync(Rotina rotina, CancellationToken parar)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(parar);
+        var execucao = _motor.ExecutarAsync(rotina, simulacao: false, origem: "agendada", cts.Token);
+        while (!execucao.IsCompleted)
+        {
+            await Task.WhenAny(execucao, Task.Delay(TimeSpan.FromSeconds(30)));
+            if (execucao.IsCompleted || cts.IsCancellationRequested) break;
+            var cfg = ArmazemConfig.Carregar();
+            string? motivo = !cfg.DentroDaJanela(DateTime.Now) ? "o horário livre do perfil acabou"
+                : Pausa.Ate is not null ? "pausa pedida pelo usuário"
+                : cfg.SomenteNaTomada && !Nativo.NaTomada() ? "o notebook saiu da tomada"
+                : null;
+            if (motivo is null) continue;
+            Registro.Escrever($"Rotina {rotina.Nome()} interrompida: {motivo}. Ela volta no próximo horário livre.");
+            cts.Cancel();
+        }
+        try { await execucao; }
+        catch (OperationCanceledException) { }
     }
 
     private void Esperando(Rotina r, string motivo)
