@@ -15,6 +15,7 @@ public partial class App : Application
     private Forms.NotifyIcon? _icone;
     private Forms.ToolStripMenuItem? _itemCabecalho;
     private Forms.ToolStripMenuItem? _itemPausa;
+    private Forms.ToolStripMenuItem? _itemParar;
     private MainWindow? _janela;
     private string _iconeAtual = "";
     private bool _pausado;
@@ -101,6 +102,11 @@ public partial class App : Application
         {
             if (_janela is not null) await _janela.Pausar(_pausado ? 0 : 60);
         });
+        _itemParar = new Forms.ToolStripMenuItem("Parar a vistoria agora", null, async (_, _) =>
+        {
+            if (_janela is not null) await _janela.Parar();
+        }) { Visible = false };
+        menu.Items.Add(_itemParar);
         menu.Items.Add(_itemPausa);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Fechar o painel (o Zelo continua cuidando)", null, (_, _) => Sair());
@@ -141,7 +147,8 @@ public partial class App : Application
                 : $"Saúde {s.Geral} · tudo em ordem";
             _pausado = e.PausadoAte is not null;
             if (_itemPausa is not null)
-                _itemPausa.Text = _pausado ? $"Retomar agora (pausado até {e.PausadoAte:HH:mm})" : "Pausar por 1 hora";
+                _itemPausa.Text = _pausado ? $"Retomar agora (pausado até {e.PausadoAte:HH:mm})" : "Pausar as vistorias por 1 hora";
+            if (_itemParar is not null) _itemParar.Visible = e.RotinaAtual is not null;
         }
         if (nome != _iconeAtual)
         {

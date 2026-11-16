@@ -590,7 +590,7 @@ public partial class MainWindow : Window
         await AtualizarAsync();
     }
 
-    private async void Parar_Click(object sender, RoutedEventArgs e) => await EnviarComando(new Pedido { Comando = "cancelar" });
+    private async void Parar_Click(object sender, RoutedEventArgs e) => await Parar();
 
     public async Task Pausar(int minutos)
     {
@@ -645,6 +645,15 @@ public partial class MainWindow : Window
         try { Process.Start(new ProcessStartInfo(alvo) { UseShellExecute = true }); }
         catch { }
     }
+
+    private void AbrirLink_Click(object sender, RoutedEventArgs e)
+    {
+        // Só abre endereços https (os detalhes vêm do serviço; nada de executar outra coisa).
+        if ((sender as FrameworkElement)?.Tag is string link && link.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            Abrir(link);
+    }
+
+    public async Task Parar() => await EnviarComando(new Pedido { Comando = "cancelar" });
 
     private void Link_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
@@ -1008,6 +1017,10 @@ public partial class MainWindow : Window
             {
                 R("defender-rapida", "Antivírus", Categoria.Seguranca, StatusTarefa.Ok, "Protegido por Malwarebytes.", 2),
                 R("espaco-disco", "Espaço livre em disco", Categoria.Disco, i > 5 ? StatusTarefa.Aviso : StatusTarefa.Ok, "O disco A: está quase cheio: restam 15,7 GB (86% em uso).", 2),
+                new ResultadoTarefa { TarefaId = "drivers-antigos", Nome = "Drivers muito antigos", Categoria = Categoria.Sistema, Status = StatusTarefa.Ok,
+                    Resumo = "2 driver(s) com mais de 4 anos. Veja nos detalhes a versão instalada e onde atualizar.", Inicio = agora, Fim = agora,
+                    Detalhes = new() { "Sua placa-mãe: ASRock B450M Steel Legend", "Realtek High Definition Audio — Realtek, versão 6.0.1.8 de 12/03/2019",
+                        "   Onde atualizar: página de suporte da sua placa-mãe ASRock B450M Steel Legend — https://www.asrock.com/support/index.asp" } },
             },
         }).ToList();
         MostrarHistorico();

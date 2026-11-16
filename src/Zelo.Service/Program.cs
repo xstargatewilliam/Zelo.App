@@ -24,6 +24,9 @@ if (args.Length >= 2 && args[0] == "--rodar")
     return;
 }
 
+// O serviço trabalha com prioridade baixa: o que a pessoa está usando vem primeiro.
+try { System.Diagnostics.Process.GetCurrentProcess().PriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal; } catch { }
+
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddWindowsService(o => o.ServiceName = "Zelo");
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(20));

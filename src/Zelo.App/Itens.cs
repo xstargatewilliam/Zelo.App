@@ -285,6 +285,7 @@ public sealed class ItemExecucao : INotifyPropertyChanged
                 Cor = Cores.De(r.Status),
                 Nome = r.Nome,
                 Resumo = r.Resumo,
+                Detalhes = r.Detalhes.Take(60).Select(ItemDetalheTexto.De).ToList(),
             }).ToList();
 
         return new ItemExecucao
@@ -308,6 +309,26 @@ public sealed class LinhaDetalhe
     public Brush Cor { get; init; } = Cores.Suave;
     public string Nome { get; init; } = "";
     public string Resumo { get; init; } = "";
+    public List<ItemDetalheTexto> Detalhes { get; init; } = new();
+    public Visibility VisDetalhes => Detalhes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+}
+
+/// <summary>Uma linha de detalhe; se tiver um endereço https, vira um botão "Abrir site".</summary>
+public sealed class ItemDetalheTexto
+{
+    private static readonly System.Text.RegularExpressions.Regex Url = new(@"https://\S+");
+
+    public string Texto { get; init; } = "";
+    public string? Link { get; init; }
+    public Visibility VisLink => Link is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public static ItemDetalheTexto De(string linha)
+    {
+        var m = Url.Match(linha);
+        if (!m.Success) return new ItemDetalheTexto { Texto = linha.Trim() };
+        var texto = linha.Remove(m.Index, m.Length).Trim().TrimEnd('—', '-', ':', ' ');
+        return new ItemDetalheTexto { Texto = texto, Link = m.Value.TrimEnd('.', ',', ')') };
+    }
 }
 
 public sealed class GrupoExecucoes

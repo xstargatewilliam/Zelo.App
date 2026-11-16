@@ -279,7 +279,8 @@ public static class Agenda
     public static Dictionary<Rotina, DateTime?> UltimasExecucoes(IEnumerable<ExecucaoRotina> historico)
     {
         var d = Enum.GetValues<Rotina>().ToDictionary(r => r, _ => (DateTime?)null);
-        foreach (var e in historico.Where(h => !h.Simulacao))
+        // Simulações e rotinas interrompidas não contam como feitas.
+        foreach (var e in historico.Where(h => !h.Simulacao && !h.Resultados.Any(r => r.TarefaId == "cancelada")))
             if (d[e.Rotina] is null || e.Fim > d[e.Rotina]) d[e.Rotina] = e.Fim;
         return d;
     }

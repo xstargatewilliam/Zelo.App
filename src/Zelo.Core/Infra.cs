@@ -114,6 +114,8 @@ public static class Executor
 
         using var p = new Process { StartInfo = psi };
         p.Start();
+        // Manutenção nunca deve disputar o processador com o que a pessoa está fazendo.
+        try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
         var saida = p.StandardOutput.ReadToEndAsync();
         var erro = p.StandardError.ReadToEndAsync();
         try
