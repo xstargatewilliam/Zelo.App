@@ -91,7 +91,31 @@ public sealed class PainelSaude
     /// <summary>0 a 100, ou -1 quando ainda não há dados.</summary>
     public int Geral { get; set; } = -1;
     public Dictionary<string, int> PorCategoria { get; set; } = new();
+    /// <summary>Quantas das 5 áreas têm verificação válida (a nota só vale sobre elas).</summary>
+    public int Cobertura { get; set; }
     public List<string> Alertas { get; set; } = new();
+    /// <summary>Itens que pedem atenção, do mais grave ao mais leve.</summary>
+    public List<PontoAtencao> Pontos { get; set; } = new();
+    /// <summary>Por área (nome do enum Categoria): pior situação e a frase que a resume.</summary>
+    public Dictionary<string, ResumoArea> Areas { get; set; } = new();
+}
+
+public sealed class PontoAtencao
+{
+    public string TarefaId { get; set; } = "";
+    public string Nome { get; set; } = "";
+    public Categoria Categoria { get; set; }
+    public StatusTarefa Status { get; set; }
+    public string Resumo { get; set; } = "";
+    public bool Desatualizado { get; set; }
+    public DateTime Quando { get; set; }
+}
+
+public sealed class ResumoArea
+{
+    public StatusTarefa Status { get; set; }
+    public string Texto { get; set; } = "";
+    public bool Desatualizado { get; set; }
 }
 
 public static class Saude
@@ -112,6 +136,11 @@ public static class Saude
         StatusTarefa.Erro => 50,
         StatusTarefa.Critico => 15,
         _ => 100,
+    };
+
+    private static int Gravidade(StatusTarefa s) => s switch
+    {
+        StatusTarefa.Critico => 3, StatusTarefa.Erro => 2, StatusTarefa.Aviso => 1, _ => 0,
     };
 
     /// <summary>Por quanto tempo o resultado de cada rotina continua "valendo".</summary>
@@ -160,6 +189,37 @@ public static class Saude
                 painel.Alertas.Add($"Desatualizado · {res.Nome}: última verificação em {res.Fim:dd/MM}.");
         }
 
+        // Resumo por área: o pior item; se tudo estiver bem, a frase da verificação principal da área.
+        var principal = new Dictionary<Categoria, string[]>
+        {
+            [Categoria.Disco] = new[] { "saude-disco", "espaco-disco" },
+            [Categoria.Seguranca] = new[] { "defender-rapida", "auditoria-seguranca" },
+            [Categoria.Atualizacoes] = new[] { "windows-update", "winget" },
+            [Categoria.Backup] = new[] { "backup-incremental", "verificar-backup" },
+            [Categoria.Sistema] = new[] { "eventos-criticos", "integridade-sistema" },
+        };
+        foreach (var grupo in ultimos.Values.GroupBy(v => v.res.Categoria))
+        {
+            var pior = grupo.OrderByDescending(v => Gravidade(v.res.Status)).ThenByDescending(v => v.res.Fim).First();
+            var escolhido = Gravidade(pior.res.Status) > 0
+                ? pior
+                : grupo.OrderBy(v => Array.IndexOf(principal[grupo.Key], v.res.TarefaId) is var i && i >= 0 ? i : 99).First();
+            painel.Areas[grupo.Key.ToString()] = new ResumoArea
+            {
+                Status = escolhido.res.Status,
+                Texto = escolhido.res.Resumo,
+                Desatualizado = agora - escolhido.res.Fim > Validade(escolhido.rotina),
+            };
+        }
+        foreach (var (res, rotina) in ultimos.Values
+                     .Where(v => Gravidade(v.res.Status) > 0)
+                     .OrderByDescending(v => Gravidade(v.res.Status)))
+            painel.Pontos.Add(new PontoAtencao
+            {
+                TarefaId = res.TarefaId, Nome = res.Nome, Categoria = res.Categoria, Status = res.Status,
+                Resumo = res.Resumo, Desatualizado = agora - res.Fim > Validade(rotina), Quando = res.Fim,
+            });
+
         double soma = 0, pesos = 0;
         foreach (var (cat, lista) in porCategoria)
         {
@@ -170,6 +230,7 @@ public static class Saude
             pesos += Pesos[cat];
         }
 
+        painel.Cobertura = porCategoria.Count;
         int geral = (int)Math.Round(soma / pesos);
         if (algumCritico) geral = Math.Min(geral, 49);
         painel.Geral = geral;
@@ -241,6 +302,46 @@ public sealed class Motor
 
     public bool Ocupado => RotinaAtual is not null;
 
+    private readonly object _travaEtapas = new();
+    private List<EtapaAtual> _etapas = new();
+
+    /// <summary>Cópia das etapas da rotina em andamento, para o painel mostrar o progresso.</summary>
+    public List<EtapaAtual> Etapas
+    {
+        get { lock (_travaEtapas) return _etapas.Select(e => e.Copia()).ToList(); }
+    }
+
+    /// <summary>Como cada tarefa aparece enquanto roda: um verbo no gerúndio, em linguagem simples.</summary>
+    public static string Acao(string id) => id switch
+    {
+        "defender-rapida" => "Conferindo o antivírus",
+        "saude-disco" => "Checando a saúde dos discos",
+        "espaco-disco" => "Medindo o espaço livre",
+        "eventos-criticos" => "Procurando erros graves no sistema",
+        "reinicio-pendente" => "Vendo se o Windows pediu para reiniciar",
+        "limpeza-temp" => "Limpando arquivos temporários antigos",
+        "limpeza-downloads" => "Limpando a pasta Downloads",
+        "backup-incremental" => "Copiando seus arquivos (backup)",
+        "ponto-restauracao" => "Criando um ponto de restauração",
+        "windows-update" => "Atualizando o Windows",
+        "drivers-wu" => "Atualizando drivers",
+        "driver-video" => "Conferindo o driver de vídeo",
+        "winget" => "Atualizando seus programas",
+        "otimizar-unidades" => "Otimizando os discos",
+        "lixeira-cache" => "Esvaziando a Lixeira antiga",
+        "inicializacao" => "Vendo o que abre com o Windows",
+        "integridade-sistema" => "Reparando arquivos do Windows",
+        "limpeza-componentes" => "Limpando atualizações antigas",
+        "verificar-volumes" => "Checando o sistema de arquivos",
+        "auditoria-seguranca" => "Revisando a segurança",
+        "defender-completa" => "Fazendo a verificação completa de vírus",
+        "verificar-backup" => "Testando o backup",
+        "bateria" => "Medindo a saúde da bateria",
+        "maiores-arquivos" => "Procurando os maiores arquivos",
+        "drivers-antigos" => "Procurando drivers muito antigos",
+        _ => id,
+    };
+
     public void Cancelar()
     {
         try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
@@ -260,6 +361,8 @@ public sealed class Motor
             var tarefas = Catalogo.Da(rotina).ToList();
             var exec = new ExecucaoRotina { Rotina = rotina, Simulacao = simulacao, Origem = origem, Inicio = DateTime.Now };
 
+            lock (_travaEtapas)
+                _etapas = tarefas.Select(t => new EtapaAtual { Id = t.Id, Nome = Acao(t.Id) }).ToList();
             RotinaAtual = rotina; SimulacaoAtual = simulacao; TotalAtual = tarefas.Count;
             Registro.Escrever($"== Rotina {rotina.Nome()} iniciada ({origem}{(simulacao ? ", simulação" : "")})");
 
@@ -267,11 +370,19 @@ public sealed class Motor
             for (int i = 0; i < tarefas.Count; i++)
             {
                 var t = tarefas[i];
-                IndiceAtual = i + 1; TarefaAtual = t.Nome;
+                IndiceAtual = i + 1; TarefaAtual = Acao(t.Id);
+                lock (_travaEtapas) _etapas[i].EmAndamento = true;
                 try
                 {
                     var res = await t.ExecutarAsync(ctx, token);
                     exec.Resultados.Add(res);
+                    lock (_travaEtapas)
+                    {
+                        _etapas[i].EmAndamento = false;
+                        _etapas[i].Status = res.Status;
+                        _etapas[i].Resumo = res.Resumo;
+                        _etapas[i].Segundos = (int)res.Duracao.TotalSeconds;
+                    }
                     Registro.Escrever($"   [{res.Status}] {t.Nome}: {res.Resumo} ({res.Duracao.TotalSeconds:0}s)");
                 }
                 catch (OperationCanceledException)
@@ -306,9 +417,41 @@ public sealed class Motor
         finally
         {
             RotinaAtual = null; TarefaAtual = null; IndiceAtual = 0; TotalAtual = 0;
+            lock (_travaEtapas) _etapas = new();
             _cts = null;
             cts.Dispose();
             _trava.Release();
         }
     }
+}
+
+public sealed class EtapaAtual
+{
+    public string Id { get; set; } = "";
+    public string Nome { get; set; } = "";
+    /// <summary>Null = ainda não rodou.</summary>
+    public StatusTarefa? Status { get; set; }
+    public string Resumo { get; set; } = "";
+    public int Segundos { get; set; }
+    public bool EmAndamento { get; set; }
+
+    public EtapaAtual Copia() => (EtapaAtual)MemberwiseClone();
+}
+
+/// <summary>Pausa pedida pelo usuário (menu da bandeja): as rotinas automáticas esperam até a hora marcada.</summary>
+public static class Pausa
+{
+    private sealed class Dados { public DateTime? Ate { get; set; } }
+
+    public static DateTime? Ate
+    {
+        get
+        {
+            var ate = Estado.Ler<Dados>("pausa")?.Ate;
+            return ate > DateTime.Now ? ate : null;
+        }
+    }
+
+    public static void Definir(TimeSpan duracao) =>
+        Estado.Gravar("pausa", new Dados { Ate = duracao > TimeSpan.Zero ? DateTime.Now + duracao : null });
 }

@@ -159,6 +159,12 @@ public sealed class ServidorPipe : BackgroundService
                 });
                 return new Resposta { Mensagem = "Procurando atualização no GitHub..." };
 
+            case "pausar":
+                var minutos = Math.Clamp(p.Minutos, 0, 24 * 60);
+                Pausa.Definir(TimeSpan.FromMinutes(minutos));
+                Registro.Escrever(minutos > 0 ? $"Rotinas automáticas pausadas por {minutos} min." : "Pausa encerrada.");
+                return new Resposta { Mensagem = minutos > 0 ? $"Pausado até {DateTime.Now.AddMinutes(minutos):HH:mm}." : "O Zelo voltou a cuidar normalmente." };
+
             case "cancelar":
                 _motor.Cancelar();
                 return new Resposta { Mensagem = "Cancelamento solicitado. A tarefa atual será interrompida." };
@@ -239,6 +245,11 @@ public sealed class ServidorPipe : BackgroundService
         e.UltimaVerificacaoAtualizacao = atu.UltimaVerificacao;
         e.ErroAtualizacao = atu.UltimoErro;
         e.Atualizando = Atualizador.EmAndamento;
+        e.Etapas = _motor.Etapas;
+        e.PausadoAte = Pausa.Ate;
+        var cfgAtual = ArmazemConfig.Carregar();
+        e.Perfil = cfgAtual.Perfil;
+        e.DentroDaJanela = cfgAtual.DentroDaJanela(DateTime.Now);
         foreach (var (r, quando) in ultimas)
         {
             e.Ultima[r.ToString()] = quando;

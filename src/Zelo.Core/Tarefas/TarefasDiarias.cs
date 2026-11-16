@@ -146,16 +146,16 @@ public sealed class EspacoDisco : Tarefa
             if (uso >= ctx.Config.LimiteCriticoDisco)
             {
                 status = ehSistema ? StatusTarefa.Critico : Pior(status, StatusTarefa.Aviso);
-                cheias.Add($"{d.Name.TrimEnd('\\')} quase cheia ({uso:0}%)");
+                cheias.Add($"O disco {d.Name.TrimEnd('\\')} está praticamente cheio: restam {Textos.Tamanho(d.TotalFreeSpace)} ({uso:0}% em uso)");
             }
             else if (uso >= ctx.Config.LimiteAvisoDisco)
             {
                 status = Pior(status, StatusTarefa.Aviso);
-                cheias.Add($"{d.Name.TrimEnd('\\')} com {uso:0}% em uso");
+                cheias.Add($"O disco {d.Name.TrimEnd('\\')} está quase cheio: restam {Textos.Tamanho(d.TotalFreeSpace)} ({uso:0}% em uso)");
             }
         }
 
-        var resumo = cheias.Count > 0 ? string.Join("; ", cheias) + "." : "Espaço livre adequado em todas as unidades.";
+        var resumo = cheias.Count > 0 ? string.Join("; ", cheias) + "." : "Espaço livre de sobra em todos os discos.";
         return Task.FromResult(Res(status, resumo, det));
     }
 }
@@ -381,7 +381,7 @@ public sealed class BackupIncremental : Tarefa
     {
         var c = ctx.Config;
         if (!c.BackupConfigurado)
-            return Res(StatusTarefa.Aviso, "Backup não configurado: escolha as pastas e o destino nas Configurações.");
+            return Res(StatusTarefa.Aviso, "Seus arquivos ainda não têm cópia. Escolha as pastas e onde guardar em Ajustes.");
 
         var raizDestino = Path.GetPathRoot(c.DestinoBackup);
         if (string.IsNullOrEmpty(raizDestino) || !Directory.Exists(raizDestino))

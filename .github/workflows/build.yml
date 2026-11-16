@@ -5,7 +5,7 @@ name: Compilar
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -62,7 +62,7 @@ jobs:
             Zelo-win-x64.zip.sha256
 
       - name: Publicar na página Releases
-        if: github.event_name == 'push' && steps.versao.outputs.publicada == 'False'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.versao.outputs.publicada == 'False'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.versao.outputs.numero }}

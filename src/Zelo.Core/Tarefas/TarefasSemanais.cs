@@ -262,8 +262,13 @@ public sealed class LixeiraECache : Tarefa
     protected override Task<ResultadoTarefa> ExecutarInternoAsync(Contexto ctx, CancellationToken ct)
     {
         var det = new List<string>();
-        var (bytesLix, itensLix) = LimparLixeira(ctx, ct);
-        det.Add($"Lixeira: {itensLix} item(ns) com mais de {ctx.Config.DiasLixeira} dias ({Textos.Tamanho(bytesLix)})");
+        long bytesLix = 0;
+        if (ctx.Config.EsvaziarLixeira)
+        {
+            (bytesLix, var itensLix) = LimparLixeira(ctx, ct);
+            det.Add($"Lixeira: {itensLix} item(ns) com mais de {ctx.Config.DiasLixeira} dias ({Textos.Tamanho(bytesLix)})");
+        }
+        else det.Add("Lixeira: desligada nos Ajustes.");
 
         long bytesCache = 0;
         if (ctx.Config.LimparCacheNavegadores)

@@ -60,6 +60,8 @@ public sealed class Agendador : BackgroundService
         var ultimas = Agenda.UltimasExecucoes(Historico.Carregar());
         var agora = DateTime.Now;
 
+        if (Pausa.Ate is { } pausa) { Esperando(Rotina.Diaria, $"pausado pelo usuário até {pausa:HH:mm}"); return; }
+
         foreach (var rotina in new[] { Rotina.Diaria, Rotina.Semanal, Rotina.Mensal })
         {
             var proxima = Agenda.Proxima(rotina, ultimas[rotina]);

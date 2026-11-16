@@ -4,94 +4,265 @@
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
 
-        <!-- Paleta -->
-        <SolidColorBrush x:Key="Fundo" Color="#F3F5F2"/>
-        <SolidColorBrush x:Key="Cartao" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="Texto" Color="#17201B"/>
-        <SolidColorBrush x:Key="Suave" Color="#5E6A63"/>
-        <SolidColorBrush x:Key="Linha" Color="#E1E6E2"/>
-        <SolidColorBrush x:Key="Destaque" Color="#1E6B52"/>
-        <SolidColorBrush x:Key="DestaqueClaro" Color="#E3F0EA"/>
-        <SolidColorBrush x:Key="Perigo" Color="#B83232"/>
-        <SolidColorBrush x:Key="PerigoClaro" Color="#FBECEC"/>
+        <!-- ===== Paleta "céu noturno" ===== -->
+        <Color x:Key="CorNoite">#0E1320</Color>
+        <SolidColorBrush x:Key="Noite" Color="#0E1320"/>
+        <SolidColorBrush x:Key="Barra" Color="#111727"/>
+        <SolidColorBrush x:Key="Ceu" Color="#161C2C"/>
+        <SolidColorBrush x:Key="Nuvem" Color="#1E2638"/>
+        <SolidColorBrush x:Key="Hover" Color="#1B2233"/>
+        <SolidColorBrush x:Key="HoverForte" Color="#252E44"/>
+        <SolidColorBrush x:Key="Linha" Color="#222A3D"/>
+        <SolidColorBrush x:Key="LinhaForte" Color="#2A3348"/>
+        <SolidColorBrush x:Key="Texto" Color="#E8ECF5"/>
+        <SolidColorBrush x:Key="Texto2" Color="#C9D1E3"/>
+        <SolidColorBrush x:Key="Suave" Color="#9AA5BD"/>
+        <SolidColorBrush x:Key="Luar" Color="#8EA4FF"/>
+        <SolidColorBrush x:Key="LuarClaro" Color="#B7C4FF"/>
+        <SolidColorBrush x:Key="Aurora" Color="#4FD1A1"/>
+        <SolidColorBrush x:Key="Ambar" Color="#F2B84B"/>
+        <SolidColorBrush x:Key="Coral" Color="#FF7A7A"/>
+        <SolidColorBrush x:Key="AuroraFundo" Color="#183A33"/>
+        <SolidColorBrush x:Key="AmbarFundo" Color="#33291A"/>
+        <SolidColorBrush x:Key="CoralFundo" Color="#3A1F24"/>
 
-        <Style x:Key="Titulo" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="17"/>
+        <LinearGradientBrush x:Key="Lua" MappingMode="Absolute" StartPoint="10,12" EndPoint="44,54">
+            <GradientStop Offset="0" Color="#B7C4FF"/>
+            <GradientStop Offset="1" Color="#5BE3B0"/>
+        </LinearGradientBrush>
+
+        <FontFamily x:Key="Fonte">Segoe UI Variable Text, Segoe UI</FontFamily>
+        <FontFamily x:Key="FonteTitulo">Segoe UI Variable Display, Segoe UI</FontFamily>
+
+        <!-- ===== Texto ===== -->
+        <Style x:Key="TTitulo" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource FonteTitulo}"/>
+            <Setter Property="FontSize" Value="28"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,24,0,10"/>
-        </Style>
-
-        <Style x:Key="Rotulo" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource Suave}"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
+        <Style x:Key="TSecao" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="17"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="Margin" Value="0,28,0,12"/>
+        </Style>
+        <Style x:Key="TForte" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="TCorpo" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto2}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="21"/>
+        </Style>
+        <Style x:Key="TSuave" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource Suave}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="19"/>
+        </Style>
+        <Style x:Key="TRotulo" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Suave}"/>
+        </Style>
 
-        <Style x:Key="CartaoBorda" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Cartao}"/>
+        <!-- ===== Cartões ===== -->
+        <Style x:Key="Cartao" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Ceu}"/>
             <Setter Property="BorderBrush" Value="{StaticResource Linha}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="12"/>
             <Setter Property="Padding" Value="16"/>
         </Style>
 
-        <Style x:Key="Botao" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource Destaque}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,8"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+        <!-- ===== Botões ===== -->
+        <Style x:Key="BotaoBase" TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource Fonte}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="MinHeight" Value="44"/>
+            <Setter Property="Padding" Value="18,0"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Fundo" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <Border x:Name="Fundo" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Fundo" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Fundo" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BotaoPrimario" TargetType="Button" BasedOn="{StaticResource BotaoBase}">
+            <Setter Property="Background" Value="{StaticResource Luar}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Luar}"/>
+            <Setter Property="Foreground" Value="{StaticResource Noite}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource LuarClaro}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BotaoSecundario" TargetType="Button" BasedOn="{StaticResource BotaoBase}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LinhaForte}"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource HoverForte}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BotaoLink" TargetType="Button" BasedOn="{StaticResource BotaoBase}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource Luar}"/>
+            <Setter Property="Padding" Value="4,0"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource LuarClaro}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ===== Menu lateral ===== -->
+        <Style x:Key="ItemMenu" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource Texto2}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinHeight" Value="44"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Fundo" Background="Transparent" CornerRadius="8" Padding="12,0" BorderThickness="1" BorderBrush="Transparent">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Hover}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Nuvem}"/>
+                                <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== Cartão de escolha (perfil) ===== -->
+        <Style x:Key="CartaoEscolha" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Fundo" Background="{StaticResource Ceu}" BorderBrush="{StaticResource Linha}" BorderThickness="2" CornerRadius="12" Padding="16,14">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="#3A4560"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource Luar}"/>
+                                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Hover}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== Fichas (dias da semana, filtros) ===== -->
+        <Style x:Key="Ficha" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{StaticResource Texto2}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="MinWidth" Value="44"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Fundo" Background="Transparent" BorderBrush="{StaticResource LinhaForte}" BorderThickness="1" CornerRadius="18" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Fundo" Property="Opacity" Value="0.88"/>
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="#3A4560"/>
                             </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Fundo" Property="Opacity" Value="0.75"/>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource Luar}"/>
+                                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Nuvem}"/>
+                                <Setter Property="Foreground" Value="{StaticResource Texto}"/>
                             </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Fundo" Property="Opacity" Value="0.4"/>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-
-        <Style x:Key="BotaoSecundario" TargetType="Button" BasedOn="{StaticResource Botao}">
-            <Setter Property="Background" Value="{StaticResource Cartao}"/>
-            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Linha}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-
-        <!-- Abas do topo -->
-        <Style x:Key="Aba" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource Suave}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+        <Style x:Key="FichaRadio" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource Texto2}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Margin" Value="0,0,28,0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <StackPanel Background="Transparent">
-                            <ContentPresenter Margin="0,0,0,10"/>
-                            <Border x:Name="Marca" Height="3" CornerRadius="2" Background="Transparent"/>
-                        </StackPanel>
+                        <Border x:Name="Fundo" Background="Transparent" BorderBrush="{StaticResource LinhaForte}" BorderThickness="1" CornerRadius="18" Padding="14,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Marca" Property="Background" Value="{StaticResource Destaque}"/>
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource Luar}"/>
+                                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Nuvem}"/>
                                 <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -99,19 +270,169 @@
             </Setter>
         </Style>
 
+        <!-- ===== Interruptor (liga/desliga) ===== -->
+        <Style x:Key="Interruptor" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <Border x:Name="Trilho" Grid.Column="1" Width="44" Height="24" CornerRadius="12" Background="{StaticResource LinhaForte}"
+                                    BorderThickness="2" BorderBrush="Transparent" VerticalAlignment="Center">
+                                <Ellipse x:Name="Bolinha" Width="16" Height="16" HorizontalAlignment="Left" Margin="2,0,0,0" Fill="{StaticResource Texto2}">
+                                    <Ellipse.RenderTransform>
+                                        <TranslateTransform x:Name="Desloca" X="0"/>
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Trilho" Property="Background" Value="{StaticResource Luar}"/>
+                                <Setter TargetName="Bolinha" Property="Fill" Value="{StaticResource Noite}"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Desloca" Storyboard.TargetProperty="X" To="20" Duration="0:0:0.16"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Desloca" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.16"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Trilho" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== Campo de texto ===== -->
         <Style TargetType="TextBox">
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Linha}"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Texto}"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource Luar}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="MinHeight" Value="40"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Fundo" Background="{StaticResource Barra}" BorderBrush="{StaticResource LinhaForte}" BorderThickness="1" CornerRadius="8" Padding="10,0">
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Fundo" Property="BorderBrush" Value="{StaticResource Luar}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <Style TargetType="CheckBox">
-            <Setter Property="Margin" Value="0,6"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <!-- ===== Barra de rolagem fina ===== -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="MinWidth" Value="10"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Border Background="{StaticResource LinhaForte}" CornerRadius="4" Margin="2"/>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Width" Value="Auto"/>
+                    <Setter Property="Height" Value="10"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Track x:Name="PART_Track">
+                                    <Track.Thumb>
+                                        <Thumb>
+                                            <Thumb.Template>
+                                                <ControlTemplate TargetType="Thumb">
+                                                    <Border Background="{StaticResource LinhaForte}" CornerRadius="4" Margin="2"/>
+                                                </ControlTemplate>
+                                            </Thumb.Template>
+                                        </Thumb>
+                                    </Track.Thumb>
+                                </Track>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
-        <Style TargetType="ComboBox">
-            <Setter Property="Padding" Value="8,5"/>
+        <!-- ===== Dicas e menus ===== -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="{StaticResource Nuvem}"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LinhaForte}"/>
+            <Setter Property="Padding" Value="10,6"/>
+        </Style>
+
+        <Style TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="#1F2535" BorderBrush="#2E3650" BorderThickness="1" CornerRadius="10" Padding="6">
+                            <StackPanel IsItemsHost="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="MenuItem">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Foreground" Value="{StaticResource Texto}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Fundo" Background="Transparent" CornerRadius="6" Padding="12,0" MinHeight="40" MinWidth="240">
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource HoverForte}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
     </Application.Resources>
