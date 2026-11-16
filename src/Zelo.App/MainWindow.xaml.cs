@@ -1,14 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Zelo.Core;
@@ -17,39 +22,92 @@ namespace Zelo.App;
 
 public partial class MainWindow : Window
 {
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly DispatcherTimer _salvarTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
+    private readonly ObservableCollection<ItemPasta> _pastas = new();
+    private readonly List<ItemTarefaConfig> _tarefasConfig;
+
     private EstadoServico? _estado;
     private List<ExecucaoRotina> _historico = new();
     private string? _ultimaExecucaoVista;
-    private bool _consultando;
     private bool _historicoCarregado;
+    private bool _consultando;
     private bool _carregandoConfig;
     private Configuracao? _config;
+    private int _scoreMostrado = int.MinValue;
+    private string? _etapaMostrada;
+    private Storyboard? _respiracao;
+    private int _passoBv = 1;
 
-    /// <summary>Chamado quando chega uma execução nova (o App usa para notificar).</summary>
+    /// <summary>Uma execução nova terminou (o App usa para notificar).</summary>
     public event Action<ExecucaoRotina>? NovaExecucao;
+    /// <summary>O estado do serviço mudou (o App usa para o ícone da bandeja). Null = serviço fora do ar.</summary>
+    public event Action<EstadoServico?>? EstadoMudou;
 
     /// <summary>Se verdadeiro, fechar a janela realmente fecha (em vez de ir para a bandeja).</summary>
     public bool Encerrando { get; set; }
 
+    /// <summary>Modo de capturas de tela (CI): sem serviço, sem animações.</summary>
+    public static bool ModoCaptura { get; set; }
+
+    private static bool Animar => SystemParameters.ClientAreaAnimation && !ModoCaptura;
+
+    private static string ArquivoBoasVindas => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Zelo", "boas-vindas.ok");
+
+    // ================================================================ Propriedades de layout e animação
+
+    public static readonly DependencyProperty ColunasAreasProperty =
+        DependencyProperty.Register(nameof(ColunasAreas), typeof(int), typeof(MainWindow), new PropertyMetadata(5));
+
+    public int ColunasAreas
+    {
+        get => (int)GetValue(ColunasAreasProperty);
+        set => SetValue(ColunasAreasProperty, value);
+    }
+
+    public static readonly DependencyProperty AnelValorProperty =
+        DependencyProperty.Register(nameof(AnelValor), typeof(double), typeof(MainWindow),
+            new PropertyMetadata(0.0, (d, _) => ((MainWindow)d).DesenharArco()));
+
+    public double AnelValor
+    {
+        get => (double)GetValue(AnelValorProperty);
+        set => SetValue(AnelValorProperty, value);
+    }
+
+    // ================================================================ Início
+
     public MainWindow()
     {
         InitializeComponent();
-        var versao = typeof(MainWindow).Assembly.GetName().Version;
-        TxtSobreVersao.Text = $"Zelo {versao?.ToString(3) ?? "1.0.0"}";
-        for (int h = 0; h <= 23; h++) CmbHoraInicio.Items.Add($"{h:00}h");
-        for (int h = 1; h <= 24; h++) CmbHoraFim.Items.Add($"{h:00}h");
-        ListaTarefasConfig.ItemsSource = Catalogo.Todas.Select(t => new ItemTarefaConfig
+
+        var versao = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        TxtVersaoMenu.Text = $"Zelo {versao}";
+        TxtSobreVersao.Text = $"Zelo {versao}";
+
+        ListaPastas.ItemsSource = _pastas;
+        BvListaPastas.ItemsSource = _pastas;
+        _tarefasConfig = Catalogo.Todas.Select(t => new ItemTarefaConfig
         {
             Id = t.Id, Nome = t.Nome, Descricao = t.Descricao,
-            Rotinas = " · " + string.Join(", ", t.Rotinas.Select(r => r.Nome().ToLowerInvariant())),
+            Rotinas = "  ·  " + string.Join(", ", t.Rotinas.Select(r => Palavras.Rotina(r).ToLowerInvariant())),
         }).ToList();
+        ListaTarefasConfig.ItemsSource = _tarefasConfig;
 
         _timer.Tick += async (_, _) => await AtualizarAsync();
+        _salvarTimer.Tick += async (_, _) => { _salvarTimer.Stop(); await SalvarConfigAsync(); };
+        SizeChanged += (_, _) => AjustarColunas();
+        SourceInitialized += (_, _) => TituloEscuro();
+
         Loaded += async (_, _) =>
         {
+            AjustarColunas();
+            if (ModoCaptura) return;
+            EntrarPagina(ConteudoInicio);
             await AtualizarAsync();
             await CarregarConfigAsync();
+            if (_config is not null && !File.Exists(ArquivoBoasVindas)) AbrirBoasVindas();
             _timer.Start();
         };
     }
@@ -65,7 +123,67 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
-    // ================================================================ Atualização
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int atributo, ref int valor, int tamanho);
+
+    /// <summary>Barra de título escura no Windows 10 (20H1+) e 11.</summary>
+    private void TituloEscuro()
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            int sim = 1;
+            DwmSetWindowAttribute(hwnd, 20, ref sim, sizeof(int));
+        }
+        catch { }
+    }
+
+    private void AjustarColunas()
+    {
+        double largura = ActualWidth - 240 - 80;
+        ColunasAreas = largura >= 980 ? 5 : largura >= 640 ? 3 : 2;
+    }
+
+    // ================================================================ Navegação
+
+    private void Nav_Checked(object sender, RoutedEventArgs e)
+    {
+        if (PaginaInicio is null || PaginaHistorico is null || PaginaAjustes is null) return;
+        PaginaInicio.Visibility = NavInicio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PaginaHistorico.Visibility = NavHistorico.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PaginaAjustes.Visibility = NavAjustes.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+        if (NavInicio.IsChecked == true) EntrarPagina(ConteudoInicio);
+        if (NavHistorico.IsChecked == true)
+        {
+            EntrarPagina(ConteudoHistorico);
+            Dispatcher.BeginInvoke(new Action(() => DesenharGrafico(animar: true)), DispatcherPriority.Loaded);
+        }
+        if (NavAjustes.IsChecked == true) EntrarPagina(ConteudoAjustes);
+    }
+
+    public void IrPara(string pagina)
+    {
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        if (pagina == "ajustes") NavAjustes.IsChecked = true;
+        else if (pagina == "historico") NavHistorico.IsChecked = true;
+        else NavInicio.IsChecked = true;
+    }
+
+    /// <summary>O conteúdo sobe 8 px e aparece.</summary>
+    private static void EntrarPagina(FrameworkElement el)
+    {
+        if (!Animar) return;
+        var dur = TimeSpan.FromMilliseconds(220);
+        var facil = new CubicEase { EasingMode = EasingMode.EaseOut };
+        el.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = facil });
+        if (el.RenderTransform is TranslateTransform t)
+            t.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(8, 0, dur) { EasingFunction = facil });
+    }
+
+    // ================================================================ Estado do serviço
 
     public async Task AtualizarAsync()
     {
@@ -80,23 +198,25 @@ public partial class MainWindow : Window
 
             if (!_historicoCarregado || _estado.UltimaExecucaoId != _ultimaExecucaoVista)
             {
-                var h = await ClientePipe.EnviarAsync(new Pedido { Comando = "historico", Quantidade = 120 });
+                var h = await ClientePipe.EnviarAsync(new Pedido { Comando = "historico", Quantidade = 200 });
                 _historico = h.Historico ?? new();
-                bool primeiraCarga = !_historicoCarregado;
+                bool primeira = !_historicoCarregado;
                 _historicoCarregado = true;
                 _ultimaExecucaoVista = _estado.UltimaExecucaoId;
                 MostrarHistorico();
                 var ultima = _historico.LastOrDefault();
-                if (!primeiraCarga && ultima is not null) NovaExecucao?.Invoke(ultima);
+                if (!primeira && ultima is not null) NovaExecucao?.Invoke(ultima);
             }
             MostrarEstado(_estado);
+            EstadoMudou?.Invoke(_estado);
         }
         catch
         {
             BannerServico.Visibility = Visibility.Visible;
-            TxtTitulo.Text = "Sem conexão com o serviço";
-            TxtSubtitulo.Text = "As rotinas automáticas dependem do serviço do Zelo.";
-            PainelBotoes.IsEnabled = false;
+            TxtTitulo.Text = "Sem contato com o serviço";
+            TxtSubtitulo.Text = "As vistorias automáticas dependem do serviço do Zelo.";
+            BtnCuidar.IsEnabled = BtnSimular.IsEnabled = BtnMaisRotinas.IsEnabled = false;
+            EstadoMudou?.Invoke(null);
         }
         finally
         {
@@ -106,89 +226,222 @@ public partial class MainWindow : Window
 
     private void MostrarEstado(EstadoServico e)
     {
-        var s = e.Saude;
-        TxtScore.Text = s.Geral < 0 ? "—" : s.Geral.ToString();
-        DesenharArco(s.Geral);
+        // Pausa
+        BannerPausa.Visibility = e.PausadoAte is null ? Visibility.Collapsed : Visibility.Visible;
+        if (e.PausadoAte is { } ate) TxtPausa.Text = $"Vistorias automáticas pausadas até {ate:HH:mm}.";
 
+        bool rodando = e.RotinaAtual is not null;
+        HeroNormal.Visibility = rodando ? Visibility.Collapsed : Visibility.Visible;
+        HeroCuidando.Visibility = rodando ? Visibility.Visible : Visibility.Collapsed;
+        SecaoEtapas.Visibility = rodando ? Visibility.Visible : Visibility.Collapsed;
+        SecaoAreas.Visibility = rodando ? Visibility.Collapsed : Visibility.Visible;
+        SecaoAtencao.Visibility = rodando ? Visibility.Collapsed : Visibility.Visible;
+        BtnCuidar.IsEnabled = BtnSimular.IsEnabled = BtnMaisRotinas.IsEnabled = !rodando && !e.Atualizando;
+
+        if (rodando) MostrarCuidando(e);
+        else
+        {
+            PararRespiracao();
+            _etapaMostrada = null;
+            MostrarSaude(e);
+        }
+        MostrarAgenda(e);
+        MostrarAtualizacao(e);
+    }
+
+    private void MostrarSaude(EstadoServico e)
+    {
+        var s = e.Saude;
+        if (s.Geral != _scoreMostrado)
+        {
+            _scoreMostrado = s.Geral;
+            TxtScore.Text = s.Geral < 0 ? "—" : s.Geral.ToString(CultureInfo.InvariantCulture);
+            TxtScoreDe.Visibility = s.Geral < 0 ? Visibility.Collapsed : Visibility.Visible;
+            Arco.Stroke = Cores.DeScore(s.Geral);
+            double alvo = Math.Max(0, s.Geral);
+            if (Animar)
+                BeginAnimation(AnelValorProperty, new DoubleAnimation(0, alvo, TimeSpan.FromMilliseconds(900))
+                    { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            else AnelValor = alvo;
+        }
+
+        var pontos = s.Pontos;
+        bool urgente = pontos.Any(p => p.Status is StatusTarefa.Critico && !p.Desatualizado);
         (TxtTitulo.Text, TxtSubtitulo.Text) = s.Geral switch
         {
-            < 0 => ("Ainda sem diagnóstico", "Rode a rotina diária para ter o primeiro panorama do PC."),
-            >= 85 => ("Seu PC está em ótimas condições", "Nada importante pendente."),
-            >= 65 => ("Seu PC está bem, com alguns pontos de atenção", "Veja abaixo o que pode melhorar."),
-            >= 50 => ("Seu PC precisa de atenção", "Há itens que merecem cuidado em breve."),
-            _ => ("Há problemas importantes", "Veja os itens críticos abaixo."),
+            < 0 => ("Vamos conhecer o seu PC.", "Faça a primeira vistoria para ter um panorama completo."),
+            _ when urgente => ("Há algo importante para resolver.", "Veja logo abaixo o que aconteceu e o que fazer."),
+            >= 85 => ("Seu PC está ótimo.", Pendencias(pontos.Count)),
+            >= 70 => ("Seu PC está bem.", Pendencias(pontos.Count)),
+            >= 50 => ("Seu PC precisa de cuidado.", Pendencias(pontos.Count)),
+            _ => ("Há problemas importantes.", "Veja logo abaixo o que aconteceu e o que fazer."),
         };
+        TxtCobertura.Text = s.Geral < 0 ? "" :
+            s.Cobertura >= 5 ? "Cobertura: 5 de 5 áreas verificadas"
+                             : $"Cobertura: {s.Cobertura} de 5 áreas verificadas — a nota vale só para elas";
+        e.Ultima.TryGetValue(nameof(Rotina.Diaria), out var ultimaDiaria);
+        TxtUltima.Text = ultimaDiaria is null ? "" : $"Última vistoria: {Palavras.Quando(ultimaDiaria)}";
 
-        TxtDiaria.Text = LinhaRotina(Rotina.Diaria, e);
-        TxtSemanal.Text = LinhaRotina(Rotina.Semanal, e);
-        TxtMensal.Text = LinhaRotina(Rotina.Mensal, e);
-
-        // Categorias
-        var cats = Enum.GetValues<Categoria>().Select(c =>
+        // Áreas
+        var ordem = new[] { Categoria.Disco, Categoria.Seguranca, Categoria.Atualizacoes, Categoria.Backup, Categoria.Sistema };
+        ListaAreas.ItemsSource = ordem.Select(c =>
         {
-            bool tem = s.PorCategoria.TryGetValue(c.ToString(), out var v);
-            return new ItemCategoria
+            if (!s.Areas.TryGetValue(c.ToString(), out var a))
+                return new ItemArea { Nome = Palavras.Area(c), Texto = "Ainda não verificada.", StatusTexto = "Sem dados", Cor = Cores.Suave, Icone = Icones.Pulado };
+            return new ItemArea
             {
-                Nome = c.Nome(),
-                Valor = tem ? v : 0,
-                ValorTexto = tem ? v.ToString() : "—",
-                Cor = Cores.DeScore(tem ? v : -1),
+                Nome = Palavras.Area(c),
+                Texto = a.Desatualizado ? a.Texto + " (verificação antiga)" : a.Texto,
+                StatusTexto = Palavras.Status(a.Status),
+                Cor = Cores.De(a.Status),
+                Borda = a.Status switch
+                {
+                    StatusTarefa.Aviso => Cores.BordaAmbar,
+                    StatusTarefa.Critico or StatusTarefa.Erro => Cores.BordaCoral,
+                    _ => Cores.Linha,
+                },
+                Icone = Icones.De(a.Status),
             };
         }).ToList();
-        ListaCategorias.ItemsSource = cats;
 
-        // Alertas
-        var alertas = s.Alertas.Select(a => new ItemAlerta
+        // Pontos de atenção
+        var itens = pontos.Select(p =>
         {
-            Texto = a,
-            Cor = a.StartsWith("Crítico") ? Cores.Critico : a.StartsWith("Desatualizado") ? Cores.Neutro : Cores.Aviso,
+            var (texto, id) = ItemPonto.AcaoPara(p.TarefaId);
+            return new ItemPonto
+            {
+                Titulo = p.Resumo,
+                Sub = $"{p.Nome} · {Palavras.Quando(p.Quando)}{(p.Desatualizado ? " · vale conferir de novo" : "")}",
+                Cor = Cores.De(p.Status), CorFundo = Cores.FundoDe(p.Status), Icone = Icones.De(p.Categoria),
+                AcaoTexto = texto, AcaoId = id,
+            };
         }).ToList();
-        ListaAlertas.ItemsSource = alertas;
-        TxtSemAlertas.Visibility = alertas.Count == 0 && s.Geral >= 0 ? Visibility.Visible : Visibility.Collapsed;
+        ListaPontos.ItemsSource = itens;
+        TxtSemPontos.Visibility = itens.Count == 0 && s.Geral >= 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
 
-        // Atualização
-        TxtAtualizacao.Text =
-            e.Atualizando ? "Atualizando o Zelo..." :
-            e.VersaoDisponivel is not null ? $"Nova versão disponível: {e.VersaoDisponivel} (você tem a {e.Versao})." :
-            e.ErroAtualizacao is not null ? $"Última consulta falhou: {e.ErroAtualizacao}" :
-            e.UltimaVerificacaoAtualizacao is not null ? $"Versão {e.Versao} é a mais recente (consultado {Formatar.Quando(e.UltimaVerificacaoAtualizacao)})." :
-            $"Versão {e.Versao}. Ainda não consultou o GitHub.";
-        BtnAtualizar.IsEnabled = !e.Atualizando && e.RotinaAtual is null;
-        BtnAtualizar.Content = e.VersaoDisponivel is not null ? "Atualizar agora" : "Procurar atualização agora";
+    private static string Pendencias(int n) => n switch
+    {
+        0 => "Nada pede a sua atenção. O Zelo segue cuidando sozinho.",
+        1 => "Um ponto merece um olhar quando der. O resto, o Zelo cuida sozinho.",
+        _ => $"{n} pontos merecem um olhar quando der. O resto, o Zelo cuida sozinho.",
+    };
 
-        // Progresso
-        bool rodando = e.RotinaAtual is not null;
-        PainelBotoes.IsEnabled = !rodando;
-        PainelProgresso.Visibility = rodando ? Visibility.Visible : Visibility.Collapsed;
-        if (rodando)
+    private void MostrarCuidando(EstadoServico e)
+    {
+        var rotina = Palavras.Rotina(e.RotinaAtual!.Value);
+        TxtRotinaRodando.Text = (e.SimulacaoAtual ? $"{rotina} em simulação" : $"{rotina} em andamento").ToUpper(new CultureInfo("pt-BR"));
+
+        var etapa = (e.TarefaAtual ?? "Preparando") + "…";
+        if (etapa != _etapaMostrada)
         {
-            TxtProgresso.Text = $"{e.RotinaAtual!.Value.Nome()}{(e.SimulacaoAtual ? " (simulação)" : "")}: {e.Indice}/{e.Total} — {e.TarefaAtual}";
-            BarraProgresso.Maximum = Math.Max(1, e.Total);
-            BarraProgresso.Value = Math.Max(0, e.Indice - 1);
+            _etapaMostrada = etapa;
+            TxtEtapaAtual.Text = etapa;
+            if (Animar && TxtEtapaAtual.RenderTransform is TranslateTransform t)
+            {
+                var dur = TimeSpan.FromMilliseconds(320);
+                TxtEtapaAtual.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, dur));
+                t.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(10, 0, dur) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            }
         }
+
+        int total = Math.Max(1, e.Total);
+        int feitas = Math.Max(0, e.Indice - 1);
+        TxtEtapaInfo.Text = $"Etapa {Math.Max(1, e.Indice)} de {total}" + (e.SimulacaoAtual ? " · simulação: nada será alterado" : "");
+        if (BarraProgresso.Parent is Grid trilho)
+        {
+            double alvo = trilho.ActualWidth * feitas / total;
+            if (Animar) BarraProgresso.BeginAnimation(WidthProperty, new DoubleAnimation(alvo, TimeSpan.FromMilliseconds(400)));
+            else BarraProgresso.Width = alvo;
+        }
+
+        ListaEtapas.ItemsSource = e.Etapas.Select(ItemEtapa.De).ToList();
+        IniciarRespiracao();
     }
 
-    private static string LinhaRotina(Rotina r, EstadoServico e)
+    /// <summary>A lua "respira" e a estrela pisca enquanto o Zelo trabalha.</summary>
+    private void IniciarRespiracao()
     {
-        e.Ultima.TryGetValue(r.ToString(), out var ultima);
-        e.Proxima.TryGetValue(r.ToString(), out var proxima);
-        var prox = proxima <= DateTime.Now ? "pendente (aguardando momento ocioso)" : Formatar.Quando(proxima);
-        return $"{r.Nome()}: última {Formatar.Quando(ultima)} · próxima {prox}";
+        if (!Animar || _respiracao is not null) return;
+        var sb = new Storyboard { RepeatBehavior = RepeatBehavior.Forever };
+        void Anima(DependencyObject alvo, string prop, double de, double ate, double segundos)
+        {
+            var a = new DoubleAnimation(de, ate, TimeSpan.FromSeconds(segundos))
+            {
+                AutoReverse = true,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            };
+            Storyboard.SetTarget(a, alvo);
+            Storyboard.SetTargetProperty(a, new PropertyPath(prop));
+            sb.Children.Add(a);
+        }
+        Anima(EscalaLua, "ScaleX", 1, 1.06, 1.8);
+        Anima(EscalaLua, "ScaleY", 1, 1.06, 1.8);
+        Anima(Halo, "Opacity", 0.18, 0.42, 1.8);
+        Anima(Estrela, "Opacity", 1, 0.4, 0.9);
+        sb.Begin(this, true);
+        _respiracao = sb;
     }
 
-    private void DesenharArco(int score)
+    private void PararRespiracao()
     {
-        const double tamanho = 128, espessura = 11;
-        double raio = (tamanho - espessura) / 2;
-        var centro = new Point(tamanho / 2, tamanho / 2);
-        double frac = Math.Clamp(score, 0, 100) / 100.0;
-        Arco.Stroke = Cores.DeScore(score);
-        if (score <= 0) { Arco.Data = null; return; }
-        if (frac >= 0.999) frac = 0.999; // um arco de 360° não desenha
+        if (_respiracao is null) return;
+        _respiracao.Stop(this);
+        _respiracao = null;
+    }
 
+    private void MostrarAgenda(EstadoServico e)
+    {
+        var rotinas = new[] { Rotina.Diaria, Rotina.Semanal, Rotina.Mensal };
+        ListaAgenda.ItemsSource = rotinas.Select((r, i) =>
+        {
+            e.Ultima.TryGetValue(r.ToString(), out var ultima);
+            e.Proxima.TryGetValue(r.ToString(), out var proxima);
+            string prox = e.PausadoAte is not null ? "Pausada até " + e.PausadoAte.Value.ToString("HH:mm")
+                : proxima <= DateTime.Now ? (e.DentroDaJanela ? "Próxima: assim que o PC estiver livre" : "Próxima: no próximo horário livre")
+                : "Próxima: " + Palavras.Quando(proxima);
+            return new ItemAgenda
+            {
+                Nome = Palavras.Rotina(r),
+                Ultima = "Última: " + Palavras.Quando(ultima),
+                Proxima = prox,
+                Separador = i < 2 ? new Thickness(0, 0, 0, 1) : new Thickness(0),
+            };
+        }).ToList();
+        TxtJanela.Text = DescreverJanela(_config, e.Perfil);
+    }
+
+    private static string DescreverJanela(Configuracao? c, string perfil) => perfil switch
+    {
+        "Trabalho" when c is not null => c.DiasExpediente.Count == 0
+            ? "Perfil Trabalho sem dias marcados: o Zelo trabalha a qualquer hora."
+            : $"Perfil Trabalho: o Zelo cuida do PC fora do seu expediente — das {Palavras.Hora(c.ExpedienteFim)} às {Palavras.Hora(c.ExpedienteInicio)} nos dias de trabalho"
+              + (c.DiasExpediente.Count == 7 ? "." : ", e a qualquer hora nos outros dias."),
+        "Jogos" => $"Perfil Jogos: o Zelo trabalha de madrugada, das {Configuracao.JogosInicio}h às {Configuracao.JogosFim}h, com o PC bem parado.",
+        _ => "O Zelo trabalha sempre que o PC está parado, a qualquer hora.",
+    };
+
+    private void MostrarAtualizacao(EstadoServico e)
+    {
+        TxtAtualizacao.Text =
+            e.Atualizando ? "Atualizando o Zelo…" :
+            e.VersaoDisponivel is not null ? $"Versão nova disponível: {e.VersaoDisponivel} (você tem a {e.Versao})." :
+            e.ErroAtualizacao is not null ? $"A última consulta ao GitHub falhou: {e.ErroAtualizacao}" :
+            e.UltimaVerificacaoAtualizacao is not null ? $"Você tem a versão mais recente (consultado {Palavras.Quando(e.UltimaVerificacaoAtualizacao)})." :
+            "Ainda não consultou o GitHub.";
+        BtnAtualizar.IsEnabled = !e.Atualizando && e.RotinaAtual is null;
+        BtnAtualizar.Content = e.VersaoDisponivel is not null ? "Atualizar agora" : "Procurar atualização";
+    }
+
+    private void DesenharArco()
+    {
+        const double centro = 66, raio = 52;
+        double frac = Math.Clamp(AnelValor, 0, 100) / 100.0;
+        if (frac <= 0) { Arco.Data = null; return; }
+        if (frac >= 0.999) frac = 0.999;
         double ang = frac * 2 * Math.PI;
-        var inicio = new Point(centro.X, centro.Y - raio);
-        var fim = new Point(centro.X + raio * Math.Sin(ang), centro.Y - raio * Math.Cos(ang));
+        var inicio = new Point(centro, centro - raio);
+        var fim = new Point(centro + raio * Math.Sin(ang), centro - raio * Math.Cos(ang));
         var figura = new PathFigure { StartPoint = inicio, IsClosed = false };
         figura.Segments.Add(new ArcSegment(fim, new Size(raio, raio), 0, frac > 0.5, SweepDirection.Clockwise, true));
         var geo = new PathGeometry();
@@ -196,268 +449,156 @@ public partial class MainWindow : Window
         Arco.Data = geo;
     }
 
+    // ================================================================ Histórico
+
     private void MostrarHistorico()
     {
-        var ultima = _historico.LastOrDefault(h => !h.Simulacao) ?? _historico.LastOrDefault();
-        if (ultima is null)
-        {
-            TxtUltimaExecucao.Text = "Nenhuma execução ainda.";
-            ListaResultados.ItemsSource = null;
-            BtnRelatorio.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            TxtUltimaExecucao.Text =
-                $"Rotina {ultima.Rotina.Nome().ToLowerInvariant()} · {Formatar.Quando(ultima.Inicio)} · {Formatar.Duracao(ultima.Fim - ultima.Inicio)}" +
-                (ultima.Simulacao ? " · simulação" : "");
-            // Problemas primeiro.
-            ListaResultados.ItemsSource = ultima.Resultados
-                .OrderBy(r => r.Status switch { StatusTarefa.Critico => 0, StatusTarefa.Erro => 1, StatusTarefa.Aviso => 2, StatusTarefa.Ok => 3, _ => 4 })
-                .Select(ItemResultado.De).ToList();
-            BtnRelatorio.Tag = ultima.Relatorio;
-            BtnRelatorio.Visibility = string.IsNullOrEmpty(ultima.Relatorio) ? Visibility.Collapsed : Visibility.Visible;
-        }
+        var hoje = DateTime.Today;
+        string Grupo(DateTime d) =>
+            d.Date == hoje ? "HOJE" :
+            d.Date == hoje.AddDays(-1) ? "ONTEM" :
+            d.Date > hoje.AddDays(-7) ? "ESTA SEMANA" :
+            d.Year == hoje.Year && d.Month == hoje.Month ? "ESTE MÊS" :
+            d.ToString("MMMM 'de' yyyy", new CultureInfo("pt-BR")).ToUpper(new CultureInfo("pt-BR"));
 
-        GradeHistorico.ItemsSource = Enumerable.Reverse(_historico).Select(ItemHistorico.De).ToList();
-        DesenharGrafico();
+        IEnumerable<ExecucaoRotina> lista = Enumerable.Reverse(_historico);
+        var itens = lista.Select(e => (e, item: ItemExecucao.De(e)));
+        if (FiltroProblemas.IsChecked == true) itens = itens.Where(x => x.item.TemProblema && !x.item.Simulacao);
+        else if (FiltroSimulacoes.IsChecked == true) itens = itens.Where(x => x.item.Simulacao);
+
+        var grupos = itens.Take(120)
+            .GroupBy(x => Grupo(x.e.Inicio))
+            .Select(g => new GrupoExecucoes { Titulo = g.Key, Itens = g.Select(x => x.item).ToList() })
+            .ToList();
+        ListaGrupos.ItemsSource = grupos;
+        TxtHistoricoVazio.Visibility = grupos.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DesenharGrafico(animar: false);
     }
 
-    private void DesenharGrafico()
+    private void Filtro_Checked(object sender, RoutedEventArgs e)
+    {
+        if (ListaGrupos is null) return;
+        MostrarHistorico();
+    }
+
+    private void DesenharGrafico(bool animar)
     {
         Grafico.Children.Clear();
-        var pontos = _historico.Where(h => !h.Simulacao && h.Score >= 0).TakeLast(60).ToList();
+        var limite = DateTime.Now.AddDays(-30);
+        var pontos = _historico.Where(h => !h.Simulacao && h.Score >= 0 && h.Fim >= limite).ToList();
         TxtGraficoVazio.Visibility = pontos.Count < 2 ? Visibility.Visible : Visibility.Collapsed;
+        TxtGraficoResumo.Text = pontos.Count < 2 ? "" :
+            $"De {pontos[0].Score} em {pontos[0].Fim:dd/MM} para {pontos[^1].Score} {(pontos[^1].Fim.Date == DateTime.Today ? "hoje" : "em " + pontos[^1].Fim.ToString("dd/MM"))}";
         double w = Grafico.ActualWidth, h = Grafico.ActualHeight;
-        if (pontos.Count < 2 || w < 10 || h < 10) return;
+        if (pontos.Count < 2 || w < 40 || h < 40) return;
 
-        // Linhas guia em 50 e 80.
-        foreach (var guia in new[] { 50, 80 })
+        const double esquerda = 36, topo = 8, base_ = 24;
+        double Y(double v) => topo + (100 - v) / 100.0 * (h - topo - base_);
+        double t0 = pontos[0].Fim.Ticks, t1 = Math.Max(t0 + 1, pontos[^1].Fim.Ticks);
+        double X(DateTime d) => esquerda + (d.Ticks - t0) / (t1 - t0) * (w - esquerda - 12);
+
+        foreach (var guia in new[] { 100, 80, 50 })
         {
-            double y = h - guia / 100.0 * (h - 10) - 5;
             Grafico.Children.Add(new Line
             {
-                X1 = 0, X2 = w, Y1 = y, Y2 = y,
-                Stroke = (Brush)FindResource("Linha"), StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 4, 4 },
+                X1 = esquerda, X2 = w, Y1 = Y(guia), Y2 = Y(guia),
+                Stroke = Cores.Linha, StrokeThickness = 1,
+                StrokeDashArray = guia == 100 ? null : new DoubleCollection { 4, 4 },
             });
-            var rot = new TextBlock { Text = guia.ToString(), FontSize = 11, Foreground = (Brush)FindResource("Suave") };
-            Canvas.SetLeft(rot, 2); Canvas.SetTop(rot, y - 15);
-            Grafico.Children.Add(rot);
+            var rotulo = new TextBlock { Text = guia.ToString(CultureInfo.InvariantCulture), FontSize = 11, Foreground = Cores.Suave };
+            Canvas.SetLeft(rotulo, 4); Canvas.SetTop(rotulo, Y(guia) - 8);
+            Grafico.Children.Add(rotulo);
         }
 
-        var linha = new Polyline { Stroke = (Brush)FindResource("Destaque"), StrokeThickness = 2.5, StrokeLineJoin = PenLineJoin.Round };
-        for (int i = 0; i < pontos.Count; i++)
+        var linha = new Polyline { Stroke = Cores.Aurora, StrokeThickness = 2.5, StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+        double comprimento = 0;
+        Point? anterior = null;
+        foreach (var p in pontos)
         {
-            double x = 24 + i * (w - 34) / (pontos.Count - 1);
-            double y = h - pontos[i].Score / 100.0 * (h - 10) - 5;
-            linha.Points.Add(new Point(x, y));
-            var ponto = new Ellipse { Width = 7, Height = 7, Fill = Cores.DeScore(pontos[i].Score), ToolTip = $"{pontos[i].Inicio:dd/MM HH:mm} · {pontos[i].Rotina.Nome()} · {pontos[i].Score}" };
-            Canvas.SetLeft(ponto, x - 3.5); Canvas.SetTop(ponto, y - 3.5);
-            Grafico.Children.Add(ponto);
+            var pt = new Point(X(p.Fim), Y(p.Score));
+            if (anterior is { } a) comprimento += (pt - a).Length;
+            anterior = pt;
+            linha.Points.Add(pt);
         }
-        Grafico.Children.Insert(0, linha);
+        Grafico.Children.Add(linha);
+        if (animar && Animar && comprimento > 0)
+        {
+            double unidades = comprimento / linha.StrokeThickness;
+            linha.StrokeDashArray = new DoubleCollection { unidades, unidades };
+            linha.BeginAnimation(Shape.StrokeDashOffsetProperty, new DoubleAnimation(unidades, 0, TimeSpan.FromMilliseconds(1000))
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        }
+
+        foreach (var p in new[] { pontos[0], pontos[^1] })
+        {
+            var bola = new Ellipse { Width = 9, Height = 9, Fill = Cores.DeScore(p.Score), ToolTip = $"{p.Fim:dd/MM HH:mm} · saúde {p.Score}" };
+            Canvas.SetLeft(bola, X(p.Fim) - 4.5); Canvas.SetTop(bola, Y(p.Score) - 4.5);
+            Grafico.Children.Add(bola);
+        }
+        var d0 = new TextBlock { Text = pontos[0].Fim.ToString("dd/MM"), FontSize = 11, Foreground = Cores.Suave };
+        Canvas.SetLeft(d0, esquerda); Canvas.SetTop(d0, h - 16);
+        var d1 = new TextBlock { Text = pontos[^1].Fim.Date == DateTime.Today ? "hoje" : pontos[^1].Fim.ToString("dd/MM"), FontSize = 11, Foreground = Cores.Suave };
+        Canvas.SetRight(d1, 12); Canvas.SetTop(d1, h - 16);
+        Grafico.Children.Add(d0);
+        Grafico.Children.Add(d1);
     }
 
-    private void Grafico_SizeChanged(object sender, SizeChangedEventArgs e) => DesenharGrafico();
+    private void Grafico_SizeChanged(object sender, SizeChangedEventArgs e) => DesenharGrafico(animar: false);
+
+    private void AbrirRelatorio_Click(object sender, RoutedEventArgs e)
+    {
+        var arquivo = (sender as FrameworkElement)?.Tag as string;
+        if (string.IsNullOrEmpty(arquivo) || !File.Exists(arquivo))
+        {
+            Aviso("Esse relatório não está mais disponível (relatórios com mais de 6 meses são apagados).");
+            return;
+        }
+        Abrir(arquivo);
+    }
 
     // ================================================================ Ações
 
-    private async void Executar_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button b || !Enum.TryParse<Rotina>(b.Tag as string, out var rotina)) return;
-        bool sim = ChkSimulacao.IsChecked == true;
+    private async void Cuidar_Click(object sender, RoutedEventArgs e) => await ExecutarRotina(Rotina.Diaria);
+    private async void Simular_Click(object sender, RoutedEventArgs e) => await ExecutarRotina(Rotina.Diaria, simulacao: true);
 
-        if (!sim && rotina != Rotina.Diaria)
+    private void MaisRotinas_Click(object sender, RoutedEventArgs e)
+    {
+        MenuRotinas.PlacementTarget = BtnMaisRotinas;
+        MenuRotinas.Placement = PlacementMode.Bottom;
+        MenuRotinas.IsOpen = true;
+    }
+
+    private async void RotinaMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem m || m.Tag is not string tag) return;
+        var partes = tag.Split('|');
+        if (!Enum.TryParse<Rotina>(partes[0], out var rotina)) return;
+        bool sim = partes.Length > 1;
+        if (!sim)
         {
             var aviso = rotina == Rotina.Mensal
-                ? "A rotina mensal pode levar algumas horas (verificação completa do antivírus, DISM e SFC). O PC pode ficar mais lento enquanto isso.\n\nIniciar agora?"
-                : "A rotina semanal instala atualizações do Windows e de programas, e pode pedir para reiniciar no final.\n\nIniciar agora?";
+                ? "O check-up mensal pode levar algumas horas (repara arquivos do Windows e confere o disco). O PC pode ficar mais lento enquanto isso.\n\nComeçar agora?"
+                : "A revisão semanal instala atualizações do Windows e dos seus programas, e pode pedir para reiniciar no final.\n\nComeçar agora?";
             if (MessageBox.Show(this, aviso, "Zelo", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         }
-        await EnviarComando(new Pedido { Comando = "executar", Rotina = rotina, Simulacao = sim });
+        await ExecutarRotina(rotina, sim);
+    }
+
+    public async Task ExecutarRotina(Rotina r, bool simulacao = false)
+    {
+        await EnviarComando(new Pedido { Comando = "executar", Rotina = r, Simulacao = simulacao });
         await AtualizarAsync();
     }
 
-    public Task ExecutarRotina(Rotina r) => EnviarComando(new Pedido { Comando = "executar", Rotina = r });
+    private async void Parar_Click(object sender, RoutedEventArgs e) => await EnviarComando(new Pedido { Comando = "cancelar" });
 
-    private async void Cancelar_Click(object sender, RoutedEventArgs e)
+    public async Task Pausar(int minutos)
     {
-        await EnviarComando(new Pedido { Comando = "cancelar" });
+        await EnviarComando(new Pedido { Comando = "pausar", Minutos = minutos });
+        await AtualizarAsync();
     }
 
-    private async Task EnviarComando(Pedido p)
-    {
-        try
-        {
-            var r = await ClientePipe.EnviarAsync(p);
-            if (!r.Ok) MessageBox.Show(this, r.Mensagem ?? "Erro.", "Zelo", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "Não foi possível falar com o serviço: " + ex.Message, "Zelo", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void AbrirRelatorio_Click(object sender, RoutedEventArgs e) => Abrir(BtnRelatorio.Tag as string);
-
-    private void GradeHistorico_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (GradeHistorico.SelectedItem is ItemHistorico h) Abrir(h.Relatorio);
-    }
-
-    private void Abrir(string? arquivo)
-    {
-        if (string.IsNullOrEmpty(arquivo) || !File.Exists(arquivo))
-        {
-            MessageBox.Show(this, "Relatório não encontrado (relatórios com mais de 6 meses são apagados).", "Zelo");
-            return;
-        }
-        Process.Start(new ProcessStartInfo(arquivo) { UseShellExecute = true });
-    }
-
-    private void Aba_Checked(object sender, RoutedEventArgs e)
-    {
-        // Disparado já durante o InitializeComponent, antes dos painéis existirem.
-        if (PainelGeral is null || PainelHistorico is null || PainelConfig is null) return;
-        PainelGeral.Visibility = AbaGeral.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        PainelHistorico.Visibility = AbaHistorico.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        PainelConfig.Visibility = AbaConfig.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        if (AbaHistorico.IsChecked == true) Dispatcher.BeginInvoke(new Action(DesenharGrafico), DispatcherPriority.Loaded);
-    }
-
-    // ================================================================ Configurações
-
-    private async Task CarregarConfigAsync()
-    {
-        try
-        {
-            var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "config-obter" });
-            if (r.Config is not null) PreencherConfig(r.Config);
-            TxtStatusConfig.Text = "";
-        }
-        catch
-        {
-            TxtStatusConfig.Text = "Não foi possível carregar as configurações (serviço fora do ar).";
-        }
-    }
-
-    private void PreencherConfig(Configuracao c)
-    {
-        _carregandoConfig = true;
-        try
-        {
-            _config = c;
-            CmbPerfil.SelectedItem = CmbPerfil.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == c.Perfil);
-            PreencherHorarios(c);
-            TxtPastas.Text = string.Join(Environment.NewLine, c.PastasBackup);
-            TxtDestino.Text = c.DestinoBackup;
-            TxtDiasTemp.Text = c.DiasTemporarios.ToString();
-            TxtDiasLixeira.Text = c.DiasLixeira.ToString();
-            TxtAvisoDisco.Text = c.LimiteAvisoDisco.ToString();
-            TxtCriticoDisco.Text = c.LimiteCriticoDisco.ToString();
-            ChkCache.IsChecked = c.LimparCacheNavegadores;
-            ChkDownloads.IsChecked = c.LimparDownloads;
-            TxtDiasDownloads.Text = c.DiasDownloads.ToString();
-            ChkWU.IsChecked = c.InstalarWindowsUpdate;
-            ChkWinget.IsChecked = c.AtualizarProgramasWinget;
-            ChkDrivers.IsChecked = c.InstalarDriversWU;
-            ChkAutoUpdate.IsChecked = c.AtualizacaoAutomatica;
-            ChkRestauracao.IsChecked = c.CriarPontoRestauracao;
-            ChkDefenderCompleto.IsChecked = c.VarreduraCompletaDefender;
-
-            var itens = (List<ItemTarefaConfig>)ListaTarefasConfig.ItemsSource;
-            foreach (var i in itens) i.Ativa = !c.TarefasDesativadas.Contains(i.Id);
-            ListaTarefasConfig.ItemsSource = null;
-            ListaTarefasConfig.ItemsSource = itens;
-        }
-        finally
-        {
-            _carregandoConfig = false;
-        }
-    }
-
-    private void PreencherHorarios(Configuracao c)
-    {
-        CmbHoraInicio.SelectedIndex = c.HoraInicio;
-        CmbHoraFim.SelectedIndex = c.HoraFim - 1;
-        TxtCpu.Text = c.LimiteCpuOcioso.ToString();
-        ChkTomada.IsChecked = c.SomenteNaTomada;
-    }
-
-    private void CmbPerfil_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_carregandoConfig || _config is null || CmbPerfil.SelectedItem is not ComboBoxItem item) return;
-        var temp = LerConfigDaTela();
-        temp.AplicarPerfil((string)item.Tag);
-        PreencherHorarios(temp);
-        if (temp.Perfil == "Jogos") ChkCache.IsChecked = false;
-    }
-
-    private Configuracao LerConfigDaTela()
-    {
-        static int Num(string texto, int padrao) => int.TryParse(texto.Trim().TrimEnd('%'), out var v) ? v : padrao;
-        var baseCfg = _config ?? new Configuracao();
-
-        var c = new Configuracao
-        {
-            Perfil = (CmbPerfil.SelectedItem as ComboBoxItem)?.Tag as string ?? baseCfg.Perfil,
-            HoraInicio = Math.Max(0, CmbHoraInicio.SelectedIndex),
-            HoraFim = Math.Max(0, CmbHoraFim.SelectedIndex) + 1,
-            LimiteCpuOcioso = Num(TxtCpu.Text, baseCfg.LimiteCpuOcioso),
-            SomenteNaTomada = ChkTomada.IsChecked == true,
-            PastasBackup = TxtPastas.Text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList(),
-            DestinoBackup = TxtDestino.Text.Trim(),
-            DiasTemporarios = Num(TxtDiasTemp.Text, baseCfg.DiasTemporarios),
-            DiasLixeira = Num(TxtDiasLixeira.Text, baseCfg.DiasLixeira),
-            LimiteAvisoDisco = Num(TxtAvisoDisco.Text, baseCfg.LimiteAvisoDisco),
-            LimiteCriticoDisco = Num(TxtCriticoDisco.Text, baseCfg.LimiteCriticoDisco),
-            LimparCacheNavegadores = ChkCache.IsChecked == true,
-            LimparDownloads = ChkDownloads.IsChecked == true,
-            DiasDownloads = Num(TxtDiasDownloads.Text, baseCfg.DiasDownloads),
-            InstalarWindowsUpdate = ChkWU.IsChecked == true,
-            AtualizarProgramasWinget = ChkWinget.IsChecked == true,
-            InstalarDriversWU = ChkDrivers.IsChecked == true,
-            AtualizacaoAutomatica = ChkAutoUpdate.IsChecked == true,
-            CriarPontoRestauracao = ChkRestauracao.IsChecked == true,
-            VarreduraCompletaDefender = ChkDefenderCompleto.IsChecked == true,
-            TarefasDesativadas = ((List<ItemTarefaConfig>)ListaTarefasConfig.ItemsSource).Where(i => !i.Ativa).Select(i => i.Id).ToList(),
-        };
-        return c;
-    }
-
-    private async void SalvarConfig_Click(object sender, RoutedEventArgs e)
-    {
-        var c = LerConfigDaTela();
-        try
-        {
-            var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "config-salvar", Config = c });
-            if (!r.Ok)
-            {
-                TxtStatusConfig.Foreground = Cores.Critico;
-                TxtStatusConfig.Text = r.Mensagem ?? "Não foi possível salvar.";
-                return;
-            }
-            if (r.Config is not null) PreencherConfig(r.Config);
-            TxtStatusConfig.Foreground = Cores.Ok;
-            TxtStatusConfig.Text = $"Salvo às {DateTime.Now:HH:mm}.";
-        }
-        catch (Exception ex)
-        {
-            TxtStatusConfig.Foreground = Cores.Critico;
-            TxtStatusConfig.Text = "Serviço indisponível: " + ex.Message;
-        }
-    }
-
-    private async void RecarregarConfig_Click(object sender, RoutedEventArgs e) => await CarregarConfigAsync();
-
-    private void AdicionarPasta_Click(object sender, RoutedEventArgs e)
-    {
-        var d = new Microsoft.Win32.OpenFolderDialog { Title = "Pasta para incluir no backup", Multiselect = true };
-        if (d.ShowDialog(this) != true) return;
-        var atuais = TxtPastas.Text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
-        foreach (var p in d.FolderNames)
-            if (!atuais.Contains(p, StringComparer.OrdinalIgnoreCase)) atuais.Add(p);
-        TxtPastas.Text = string.Join(Environment.NewLine, atuais);
-    }
+    private async void Retomar_Click(object sender, RoutedEventArgs e) => await Pausar(0);
 
     private async void Atualizar_Click(object sender, RoutedEventArgs e)
     {
@@ -472,15 +613,517 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AcaoPonto_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string id || id.Length == 0) return;
+        if (id == "zelo:backup")
+        {
+            NavAjustes.IsChecked = true;
+            Dispatcher.BeginInvoke(new Action(() => TituloBackup.BringIntoView()), DispatcherPriority.Loaded);
+            return;
+        }
+        Abrir(id);
+    }
+
+    private async Task EnviarComando(Pedido p)
+    {
+        try
+        {
+            var r = await ClientePipe.EnviarAsync(p);
+            if (!r.Ok) Aviso(r.Mensagem ?? "Não deu certo.");
+        }
+        catch (Exception ex)
+        {
+            Aviso("Não foi possível falar com o serviço do Zelo: " + ex.Message);
+        }
+    }
+
+    private void Aviso(string texto) => MessageBox.Show(this, texto, "Zelo", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private static void Abrir(string alvo)
+    {
+        try { Process.Start(new ProcessStartInfo(alvo) { UseShellExecute = true }); }
+        catch { }
+    }
+
     private void Link_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        Abrir(e.Uri.AbsoluteUri);
         e.Handled = true;
+    }
+
+    // ================================================================ Ajustes
+
+    private async Task CarregarConfigAsync()
+    {
+        try
+        {
+            var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "config-obter" });
+            if (r.Config is not null) PreencherConfig(r.Config);
+        }
+        catch
+        {
+            TxtSalvo.Foreground = Cores.Coral;
+            TxtSalvo.Text = "Não foi possível carregar os ajustes (serviço fora do ar).";
+        }
+    }
+
+    private void PreencherConfig(Configuracao c)
+    {
+        _carregandoConfig = true;
+        try
+        {
+            _config = c;
+            PerfilCasa.IsChecked = c.Perfil == "Domestico";
+            PerfilTrabalho.IsChecked = c.Perfil == "Trabalho";
+            PerfilJogos.IsChecked = c.Perfil == "Jogos";
+            PainelExpediente.Visibility = c.Perfil == "Trabalho" ? Visibility.Visible : Visibility.Collapsed;
+            TxtExpInicio.Text = Palavras.Hora(c.ExpedienteInicio);
+            TxtExpFim.Text = Palavras.Hora(c.ExpedienteFim);
+            foreach (var t in PainelDias.Children.OfType<ToggleButton>())
+                t.IsChecked = int.TryParse(t.Tag as string, out var d) && c.DiasExpediente.Contains(d);
+            AtualizarResumoExpediente(c);
+            ChkTomada.IsChecked = c.SomenteNaTomada;
+
+            _pastas.Clear();
+            foreach (var p in c.PastasBackup) _pastas.Add(new ItemPasta { Caminho = p });
+            AtualizarDestino(c.DestinoBackup);
+
+            bool temp = !c.TarefasDesativadas.Contains("limpeza-temp");
+            ChkTemp.IsChecked = temp;
+            ChkLixeira.IsChecked = c.EsvaziarLixeira;
+            ChkCache.IsChecked = c.LimparCacheNavegadores;
+            ChkDownloads.IsChecked = c.LimparDownloads;
+            TxtTituloTemp.Text = $"Arquivos temporários com mais de {c.DiasTemporarios} dias";
+            TxtTituloLixeira.Text = $"Lixeira com mais de {c.DiasLixeira} dias";
+            TxtTituloDownloads.Text = $"Pasta Downloads: arquivos com mais de {c.DiasDownloads} dias";
+
+            ChkWU.IsChecked = c.InstalarWindowsUpdate;
+            ChkWinget.IsChecked = c.AtualizarProgramasWinget;
+            ChkDrivers.IsChecked = c.InstalarDriversWU;
+            ChkAutoUpdate.IsChecked = c.AtualizacaoAutomatica;
+
+            TxtDiasTemp.Text = c.DiasTemporarios.ToString(CultureInfo.InvariantCulture);
+            TxtDiasLixeira.Text = c.DiasLixeira.ToString(CultureInfo.InvariantCulture);
+            TxtDiasDownloads.Text = c.DiasDownloads.ToString(CultureInfo.InvariantCulture);
+            TxtAvisoDisco.Text = c.LimiteAvisoDisco.ToString(CultureInfo.InvariantCulture);
+            TxtCriticoDisco.Text = c.LimiteCriticoDisco.ToString(CultureInfo.InvariantCulture);
+            TxtCpu.Text = c.LimiteCpuOcioso.ToString(CultureInfo.InvariantCulture);
+            ChkRestauracao.IsChecked = c.CriarPontoRestauracao;
+            ChkDefenderCompleto.IsChecked = c.VarreduraCompletaDefender;
+
+            foreach (var t in _tarefasConfig) t.Ativa = !c.TarefasDesativadas.Contains(t.Id);
+            ListaTarefasConfig.ItemsSource = null;
+            ListaTarefasConfig.ItemsSource = _tarefasConfig;
+        }
+        finally
+        {
+            _carregandoConfig = false;
+        }
+    }
+
+    private void AtualizarDestino(string destino)
+    {
+        string texto = string.IsNullOrWhiteSpace(destino)
+            ? "Nenhum lugar escolhido ainda. Um disco externo ou uma pasta do OneDrive ou Google Drive (que guardam versões antigas) é o ideal."
+            : destino;
+        TxtDestino.Text = texto;
+        BvTxtDestino.Text = texto;
+        BtnDestino.Content = string.IsNullOrWhiteSpace(destino) ? "Escolher destino" : "Trocar destino";
+    }
+
+    private void AtualizarResumoExpediente(Configuracao c)
+    {
+        TxtResumoExpediente.Text = c.DiasExpediente.Count == 0
+            ? "Nenhum dia marcado: o Zelo trabalha a qualquer hora."
+            : $"Nos dias de trabalho, o Zelo cuida do PC das {Palavras.Hora(c.ExpedienteFim)} às {Palavras.Hora(c.ExpedienteInicio)}"
+              + (c.DiasExpediente.Count == 7 ? "." : ". Nos outros dias, a qualquer hora.");
+    }
+
+    /// <summary>Monta a configuração a partir da tela, preservando o que a tela não mostra.</summary>
+    private Configuracao LerConfigDaTela()
+    {
+        var c = _config is null ? new Configuracao() : Json.Desserializar<Configuracao>(Json.Serializar(_config)) ?? new Configuracao();
+        static int Num(string texto, int padrao) =>
+            int.TryParse(new string(texto.Trim().TakeWhile(char.IsDigit).ToArray()), out var v) ? v : padrao;
+
+        c.ExpedienteInicio = Palavras.LerHora(TxtExpInicio.Text) ?? c.ExpedienteInicio;
+        c.ExpedienteFim = Palavras.LerHora(TxtExpFim.Text) ?? c.ExpedienteFim;
+        c.DiasExpediente = PainelDias.Children.OfType<ToggleButton>()
+            .Where(t => t.IsChecked == true)
+            .Select(t => int.Parse((string)t.Tag, CultureInfo.InvariantCulture))
+            .OrderBy(d => d).ToList();
+        c.SomenteNaTomada = ChkTomada.IsChecked == true;
+
+        c.PastasBackup = _pastas.Select(p => p.Caminho).ToList();
+
+        c.LimparCacheNavegadores = ChkCache.IsChecked == true;
+        c.LimparDownloads = ChkDownloads.IsChecked == true;
+        c.InstalarWindowsUpdate = ChkWU.IsChecked == true;
+        c.AtualizarProgramasWinget = ChkWinget.IsChecked == true;
+        c.InstalarDriversWU = ChkDrivers.IsChecked == true;
+        c.AtualizacaoAutomatica = ChkAutoUpdate.IsChecked == true;
+
+        c.DiasTemporarios = Num(TxtDiasTemp.Text, c.DiasTemporarios);
+        c.DiasLixeira = Num(TxtDiasLixeira.Text, c.DiasLixeira);
+        c.DiasDownloads = Num(TxtDiasDownloads.Text, c.DiasDownloads);
+        c.LimiteAvisoDisco = Num(TxtAvisoDisco.Text, c.LimiteAvisoDisco);
+        c.LimiteCriticoDisco = Num(TxtCriticoDisco.Text, c.LimiteCriticoDisco);
+        c.LimiteCpuOcioso = Num(TxtCpu.Text, c.LimiteCpuOcioso);
+        c.CriarPontoRestauracao = ChkRestauracao.IsChecked == true;
+        c.VarreduraCompletaDefender = ChkDefenderCompleto.IsChecked == true;
+        c.EsvaziarLixeira = ChkLixeira.IsChecked == true;
+
+        // Trocar de perfil ajusta o limite de processador; vem por último para valer sobre o campo.
+        var perfil = PerfilTrabalho.IsChecked == true ? "Trabalho" : PerfilJogos.IsChecked == true ? "Jogos" : "Domestico";
+        if (perfil != c.Perfil) c.AplicarPerfil(perfil);
+
+        // Interruptores de limpeza e a lista avançada mexem nas mesmas tarefas: a lista é a base.
+        var desligadas = _tarefasConfig.Where(t => !t.Ativa).Select(t => t.Id).ToHashSet();
+        void Define(string id, bool ligado) { if (ligado) desligadas.Remove(id); else desligadas.Add(id); }
+        Define("limpeza-temp", ChkTemp.IsChecked == true);
+        c.TarefasDesativadas = desligadas.ToList();
+        return c;
+    }
+
+    private void AgendarSalvar()
+    {
+        if (_carregandoConfig || _config is null) return;
+        TxtSalvo.Foreground = Cores.Suave;
+        TxtSalvo.Text = "Salvando…";
+        _salvarTimer.Stop();
+        _salvarTimer.Start();
+    }
+
+    private async Task SalvarConfigAsync()
+    {
+        var c = LerConfigDaTela();
+        try
+        {
+            var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "config-salvar", Config = c });
+            if (!r.Ok)
+            {
+                TxtSalvo.Foreground = Cores.Coral;
+                TxtSalvo.Text = r.Mensagem ?? "Não foi possível salvar.";
+                await CarregarConfigAsync(); // volta a tela ao que está valendo
+                return;
+            }
+            if (r.Config is not null) PreencherConfig(r.Config);
+            TxtSalvo.Foreground = Cores.Aurora;
+            TxtSalvo.Text = $"✓ Salvo às {DateTime.Now:HH:mm}";
+            if (_estado is not null) MostrarAgenda(_estado);
+        }
+        catch (Exception ex)
+        {
+            TxtSalvo.Foreground = Cores.Coral;
+            TxtSalvo.Text = "Serviço indisponível: " + ex.Message;
+        }
+    }
+
+    private void Ajuste_Click(object sender, RoutedEventArgs e) => AgendarSalvar();
+
+    private void Numero_LostFocus(object sender, RoutedEventArgs e) => AgendarSalvar();
+
+    private void Perfil_Checked(object sender, RoutedEventArgs e)
+    {
+        if (PainelExpediente is null) return;
+        PainelExpediente.Visibility = PerfilTrabalho.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        AgendarSalvar();
+    }
+
+    private void Expediente_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox caixa || _config is null) return;
+        var hora = Palavras.LerHora(caixa.Text);
+        if (hora is null)
+        {
+            caixa.Text = Palavras.Hora(caixa == TxtExpInicio ? _config.ExpedienteInicio : _config.ExpedienteFim);
+            return;
+        }
+        caixa.Text = Palavras.Hora(hora.Value);
+        AtualizarResumoExpediente(LerConfigDaTela());
+        AgendarSalvar();
+    }
+
+    private void Dia_Click(object sender, RoutedEventArgs e)
+    {
+        AtualizarResumoExpediente(LerConfigDaTela());
+        AgendarSalvar();
+    }
+
+    private void Avancado_Click(object sender, RoutedEventArgs e)
+    {
+        bool aberto = BtnAvancado.IsChecked == true;
+        PainelAvancado.Visibility = aberto ? Visibility.Visible : Visibility.Collapsed;
+        BtnAvancado.Content = aberto ? "Ocultar opções avançadas" : "Mostrar opções avançadas";
+    }
+
+    private void AdicionarPasta_Click(object sender, RoutedEventArgs e)
+    {
+        var d = new Microsoft.Win32.OpenFolderDialog { Title = "Pastas para incluir no backup", Multiselect = true };
+        if (d.ShowDialog(this) != true) return;
+        foreach (var p in d.FolderNames)
+            if (!_pastas.Any(x => x.Caminho.Equals(p, StringComparison.OrdinalIgnoreCase)))
+                _pastas.Add(new ItemPasta { Caminho = p });
+        AgendarSalvar();
+    }
+
+    private void RemoverPasta_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string caminho) return;
+        var item = _pastas.FirstOrDefault(p => p.Caminho == caminho);
+        if (item is not null) _pastas.Remove(item);
+        AgendarSalvar();
     }
 
     private void EscolherDestino_Click(object sender, RoutedEventArgs e)
     {
-        var d = new Microsoft.Win32.OpenFolderDialog { Title = "Onde guardar o backup" };
-        if (d.ShowDialog(this) == true) TxtDestino.Text = d.FolderName;
+        var d = new Microsoft.Win32.OpenFolderDialog { Title = "Onde guardar a cópia dos seus arquivos" };
+        if (d.ShowDialog(this) != true || _config is null) return;
+        _config.DestinoBackup = d.FolderName;
+        AtualizarDestino(d.FolderName);
+        AgendarSalvar();
+    }
+
+    // ================================================================ Boas-vindas
+
+    private void AbrirBoasVindas()
+    {
+        _passoBv = 1;
+        if (_config is not null)
+        {
+            BvCasa.IsChecked = _config.Perfil == "Domestico";
+            BvTrabalho.IsChecked = _config.Perfil == "Trabalho";
+            BvJogos.IsChecked = _config.Perfil == "Jogos";
+            BvExpInicio.Text = Palavras.Hora(_config.ExpedienteInicio);
+            BvExpFim.Text = Palavras.Hora(_config.ExpedienteFim);
+        }
+        MostrarPassoBv();
+        BoasVindas.Visibility = Visibility.Visible;
+        EntrarPagina(BoasVindas);
+    }
+
+    private void MostrarPassoBv()
+    {
+        BvPasso1.Visibility = _passoBv == 1 ? Visibility.Visible : Visibility.Collapsed;
+        BvPasso2.Visibility = _passoBv == 2 ? Visibility.Visible : Visibility.Collapsed;
+        BvPasso3.Visibility = _passoBv == 3 ? Visibility.Visible : Visibility.Collapsed;
+        BvBarra2.Background = _passoBv >= 2 ? Cores.Luar : Cores.LinhaForte;
+        BvBarra3.Background = _passoBv >= 3 ? Cores.Luar : Cores.LinhaForte;
+        BvPassoTexto.Text = $"Passo {_passoBv} de 3";
+        BvVoltar.Content = _passoBv == 1 ? "Fazer isso depois" : "Voltar";
+        BvAvancar.Content = _passoBv switch
+        {
+            2 => _pastas.Count > 0 ? "Continuar" : "Pular por enquanto",
+            3 => "Ver a simulação",
+            _ => "Continuar",
+        };
+        BvErro.Text = "";
+        BvPainelExpediente.Visibility = BvTrabalho.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void BvPerfil_Checked(object sender, RoutedEventArgs e)
+    {
+        if (BvPainelExpediente is null) return;
+        BvPainelExpediente.Visibility = BvTrabalho.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void BvVoltar_Click(object sender, RoutedEventArgs e)
+    {
+        if (_passoBv == 1) { FecharBoasVindas(); return; }
+        _passoBv--;
+        MostrarPassoBv();
+    }
+
+    private async void BvAvancar_Click(object sender, RoutedEventArgs e)
+    {
+        if (_config is null) { FecharBoasVindas(); return; }
+        if (_passoBv == 1)
+        {
+            if (BvTrabalho.IsChecked == true)
+            {
+                var ini = Palavras.LerHora(BvExpInicio.Text);
+                var fim = Palavras.LerHora(BvExpFim.Text);
+                if (ini is null || fim is null || ini == fim)
+                {
+                    BvErro.Text = "Confira o horário (ex.: 9h às 18h).";
+                    return;
+                }
+                PerfilTrabalho.IsChecked = true;
+                TxtExpInicio.Text = Palavras.Hora(ini.Value);
+                TxtExpFim.Text = Palavras.Hora(fim.Value);
+            }
+            else if (BvJogos.IsChecked == true) PerfilJogos.IsChecked = true;
+            else PerfilCasa.IsChecked = true;
+            AtualizarResumoExpediente(LerConfigDaTela());
+            AgendarSalvar();
+        }
+        else if (_passoBv == 3)
+        {
+            FecharBoasVindas();
+            await ExecutarRotina(Rotina.Diaria, simulacao: true);
+            return;
+        }
+        _passoBv++;
+        MostrarPassoBv();
+    }
+
+    private void FecharBoasVindas()
+    {
+        BoasVindas.Visibility = Visibility.Collapsed;
+        try
+        {
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(ArquivoBoasVindas)!);
+            File.WriteAllText(ArquivoBoasVindas, DateTime.Now.ToString("o", CultureInfo.InvariantCulture));
+        }
+        catch { }
+    }
+
+    // ================================================================ Capturas de tela (CI)
+
+    /// <summary>Preenche a tela com dados de exemplo e salva PNGs de cada tela. Usado só no GitHub Actions.</summary>
+    public async Task CapturarAsync(string pasta)
+    {
+        Directory.CreateDirectory(pasta);
+        var agora = DateTime.Now;
+        var cfg = new Configuracao
+        {
+            Perfil = "Trabalho", ExpedienteInicio = 22, ExpedienteFim = 6,
+            PastasBackup = new() { @"C:\Users\Ana\Documents", @"C:\Users\Ana\Pictures" },
+        };
+        cfg.Validar();
+        PreencherConfig(cfg);
+
+        ResultadoTarefa R(string id, string nome, Categoria c, StatusTarefa s, string resumo, double horas) => new()
+        {
+            TarefaId = id, Nome = nome, Categoria = c, Status = s, Resumo = resumo,
+            Inicio = agora.AddHours(-horas), Fim = agora.AddHours(-horas).AddSeconds(12),
+        };
+        _historico = Enumerable.Range(0, 12).Select(i => new ExecucaoRotina
+        {
+            Id = "ex" + i, Rotina = i % 4 == 0 ? Rotina.Semanal : Rotina.Diaria, Simulacao = i == 3,
+            Inicio = agora.AddDays(-(11 - i) * 2.5).AddMinutes(-3), Fim = agora.AddDays(-(11 - i) * 2.5),
+            Score = i == 0 ? 49 : (int)(70 + i * 1.5),
+            Resultados = new()
+            {
+                R("defender-rapida", "Antivírus", Categoria.Seguranca, StatusTarefa.Ok, "Protegido por Malwarebytes.", 2),
+                R("espaco-disco", "Espaço livre em disco", Categoria.Disco, i > 5 ? StatusTarefa.Aviso : StatusTarefa.Ok, "O disco A: está quase cheio: restam 15,7 GB (86% em uso).", 2),
+            },
+        }).ToList();
+        MostrarHistorico();
+
+        var saude = new PainelSaude
+        {
+            Geral = 84, Cobertura = 5,
+            Areas = new()
+            {
+                ["Disco"] = new ResumoArea { Status = StatusTarefa.Aviso, Texto = "O disco A: está quase cheio: restam 15,7 GB (86% em uso)." },
+                ["Seguranca"] = new ResumoArea { Status = StatusTarefa.Ok, Texto = "Protegido por Malwarebytes." },
+                ["Atualizacoes"] = new ResumoArea { Status = StatusTarefa.Ok, Texto = "Windows em dia, nenhuma atualização pendente." },
+                ["Backup"] = new ResumoArea { Status = StatusTarefa.Aviso, Texto = "Seus arquivos ainda não têm cópia." },
+                ["Sistema"] = new ResumoArea { Status = StatusTarefa.Ok, Texto = "7 erro(s) comum(ns), nada grave." },
+            },
+            Pontos = new()
+            {
+                new PontoAtencao { TarefaId = "backup-incremental", Nome = "Backup incremental", Categoria = Categoria.Backup, Status = StatusTarefa.Aviso, Resumo = "Seus arquivos ainda não têm cópia. Escolha as pastas e onde guardar em Ajustes.", Quando = agora.AddHours(-2) },
+                new PontoAtencao { TarefaId = "espaco-disco", Nome = "Espaço livre em disco", Categoria = Categoria.Disco, Status = StatusTarefa.Aviso, Resumo = "O disco A: está quase cheio: restam 15,7 GB (86% em uso).", Quando = agora.AddHours(-2) },
+            },
+        };
+        var estado = new EstadoServico
+        {
+            Versao = "1.2.0", Saude = saude, Perfil = cfg.Perfil, DentroDaJanela = true,
+            Ultima = new() { ["Diaria"] = agora.AddHours(-2), ["Semanal"] = agora.AddDays(-3), ["Mensal"] = agora.AddDays(-14) },
+            Proxima = new() { ["Diaria"] = agora.AddHours(18), ["Semanal"] = agora.AddDays(3.5), ["Mensal"] = agora.AddDays(15) },
+            UltimaVerificacaoAtualizacao = agora.AddHours(-1),
+        };
+        _estado = estado;
+
+        async Task Esperar()
+        {
+            UpdateLayout();
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            await Task.Delay(300);
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        }
+
+        NavInicio.IsChecked = true;
+        MostrarEstado(estado);
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "1-inicio.png"));
+        SalvarConteudo(ConteudoInicio, System.IO.Path.Combine(pasta, "1b-inicio-inteiro.png"));
+
+        var rodando = Json.Desserializar<EstadoServico>(Json.Serializar(estado))!;
+        rodando.RotinaAtual = Rotina.Diaria; rodando.Indice = 4; rodando.Total = 7; rodando.TarefaAtual = "Procurando erros graves no sistema";
+        rodando.Etapas = new()
+        {
+            new EtapaAtual { Nome = "Conferindo o antivírus", Status = StatusTarefa.Ok, Resumo = "Protegido por Malwarebytes.", Segundos = 3 },
+            new EtapaAtual { Nome = "Checando a saúde dos discos", Status = StatusTarefa.Ok, Resumo = "2 disco(s) saudável(is).", Segundos = 11 },
+            new EtapaAtual { Nome = "Medindo o espaço livre", Status = StatusTarefa.Aviso, Resumo = "O disco A: está quase cheio." },
+            new EtapaAtual { Nome = "Procurando erros graves no sistema", EmAndamento = true },
+            new EtapaAtual { Nome = "Vendo se o Windows pediu para reiniciar" },
+            new EtapaAtual { Nome = "Limpando arquivos temporários antigos" },
+            new EtapaAtual { Nome = "Copiando seus arquivos (backup)" },
+        };
+        MostrarEstado(rodando);
+        await Esperar();
+        MostrarEstado(rodando); // a barra de progresso usa a largura já medida
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "2-cuidando.png"));
+        MostrarEstado(estado);
+
+        NavHistorico.IsChecked = true;
+        await Esperar();
+        DesenharGrafico(animar: false);
+        if (ListaGrupos.ItemsSource is List<GrupoExecucoes> g && g.Count > 0 && g[0].Itens.Count > 0) g[0].Itens[0].Expandido = true;
+        await Esperar();
+        SalvarConteudo(ConteudoHistorico, System.IO.Path.Combine(pasta, "3-historico.png"));
+
+        NavAjustes.IsChecked = true;
+        BtnAvancado.IsChecked = true;
+        Avancado_Click(this, new RoutedEventArgs());
+        await Esperar();
+        SalvarConteudo(ConteudoAjustes, System.IO.Path.Combine(pasta, "4-ajustes.png"));
+
+        NavInicio.IsChecked = true;
+        AbrirBoasVindas();
+        BvTrabalho.IsChecked = true;
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "5-boas-vindas.png"));
+        _passoBv = 2; MostrarPassoBv();
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "6-boas-vindas-backup.png"));
+    }
+
+    private static void SalvarPng(Visual alvo, string arquivo)
+    {
+        var el = (FrameworkElement)alvo;
+        int w = (int)Math.Ceiling(el.ActualWidth), h = (int)Math.Ceiling(el.ActualHeight);
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(Math.Max(1, w), Math.Max(1, h), 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(alvo);
+        Gravar(rtb, arquivo);
+    }
+
+    /// <summary>Renderiza o conteúdo inteiro de uma página (além da parte visível), com o fundo.</summary>
+    private void SalvarConteudo(FrameworkElement el, string arquivo)
+    {
+        int w = (int)Math.Ceiling(el.ActualWidth + 80), h = (int)Math.Ceiling(el.ActualHeight + 80);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle((Brush)FindResource("Noite"), null, new Rect(0, 0, w, h));
+            dc.DrawRectangle(new VisualBrush(el) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top },
+                null, new Rect(40, 40, el.ActualWidth, el.ActualHeight));
+        }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(Math.Max(1, w), Math.Max(1, h), 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        Gravar(rtb, arquivo);
+    }
+
+    private static void Gravar(System.Windows.Media.Imaging.BitmapSource bmp, string arquivo)
+    {
+        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+        using var fs = File.Create(arquivo);
+        enc.Save(fs);
     }
 }

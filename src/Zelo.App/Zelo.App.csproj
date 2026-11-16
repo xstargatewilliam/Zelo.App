@@ -12,7 +12,18 @@
     <RootNamespace>Zelo.App</RootNamespace>
     <AssemblyName>Zelo.App</AssemblyName>
     <LangVersion>latest</LangVersion>
+    <ApplicationIcon>Assets\zelo.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\zelo.ico" />
+    <Resource Include="Assets\zelo-256.png" />
+    <Resource Include="Assets\boas-vindas.png" />
+    <Resource Include="Assets\bandeja-neutro.ico" />
+    <Resource Include="Assets\bandeja-ok.ico" />
+    <Resource Include="Assets\bandeja-atencao.ico" />
+    <Resource Include="Assets\bandeja-urgente.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Zelo.Core\Zelo.Core.csproj" />

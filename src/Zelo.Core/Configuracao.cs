@@ -12,6 +12,7 @@ public sealed class Configuracao
     // Limpeza
     public int DiasTemporarios { get; set; } = 7;
     public int DiasLixeira { get; set; } = 30;
+    public bool EsvaziarLixeira { get; set; } = true;
     public bool LimparCacheNavegadores { get; set; } = false;
     /// <summary>Opcional: apaga da pasta Downloads o que estiver lá há mais de DiasDownloads.</summary>
     public bool LimparDownloads { get; set; } = false;
@@ -37,6 +38,11 @@ public sealed class Configuracao
     /// <summary>Hora (1-24) até a qual pode rodar. Se menor que HoraInicio, a janela atravessa a meia-noite.</summary>
     public int HoraFim { get; set; } = 24;
     public bool SomenteNaTomada { get; set; } = true;
+    /// <summary>Perfil Trabalho: horário do expediente (0-23). O Zelo trabalha FORA dele. Pode atravessar a meia-noite (ex.: 22 às 6).</summary>
+    public int ExpedienteInicio { get; set; } = 9;
+    public int ExpedienteFim { get; set; } = 18;
+    /// <summary>Dias com expediente (0 = domingo … 6 = sábado). Num turno que atravessa a meia-noite, vale o dia em que ele começa.</summary>
+    public List<int> DiasExpediente { get; set; } = new() { 1, 2, 3, 4, 5 };
     /// <summary>Uso de CPU (%) abaixo do qual o PC é considerado ocioso.</summary>
     public int LimiteCpuOcioso { get; set; } = 30;
 
@@ -59,38 +65,40 @@ public sealed class Configuracao
         HoraFim = Math.Clamp(HoraFim, 1, 24);
         LimiteCpuOcioso = Math.Clamp(LimiteCpuOcioso, 5, 100);
         TarefasDesativadas ??= new();
+        ExpedienteInicio = Math.Clamp(ExpedienteInicio, 0, 23);
+        ExpedienteFim = Math.Clamp(ExpedienteFim, 0, 23);
+        if (ExpedienteInicio == ExpedienteFim) { ExpedienteInicio = 9; ExpedienteFim = 18; }
+        DiasExpediente = (DiasExpediente ?? new()).Where(d => d is >= 0 and <= 6).Distinct().OrderBy(d => d).ToList();
         if (Perfil is not ("Domestico" or "Trabalho" or "Jogos")) Perfil = "Domestico";
     }
 
-    /// <summary>Ajusta horários e preferências conforme o perfil escolhido.</summary>
+    /// <summary>Ajusta as preferências que dependem do perfil escolhido.</summary>
     public void AplicarPerfil(string perfil)
     {
         Perfil = perfil;
-        switch (perfil)
-        {
-            case "Trabalho":
-                // Fora do expediente: das 19h às 7h.
-                HoraInicio = 19; HoraFim = 7; LimiteCpuOcioso = 30;
-                break;
-            case "Jogos":
-                // Madrugada, e só com o PC realmente parado.
-                HoraInicio = 2; HoraFim = 8; LimiteCpuOcioso = 15;
-                LimparCacheNavegadores = false;
-                break;
-            default:
-                HoraInicio = 0; HoraFim = 24; LimiteCpuOcioso = 30;
-                break;
-        }
+        LimiteCpuOcioso = perfil == "Jogos" ? 15 : 30;
+        if (perfil == "Jogos") LimparCacheNavegadores = false;
     }
 
-    public bool DentroDaJanela(DateTime agora)
+    /// <summary>Madrugada usada pelo perfil Jogos.</summary>
+    public const int JogosInicio = 2, JogosFim = 8;
+
+    /// <summary>True se a hora cai no expediente configurado (perfil Trabalho).</summary>
+    public bool EmExpediente(DateTime t)
     {
-        int h = agora.Hour;
-        if (HoraInicio == 0 && HoraFim == 24) return true;
-        return HoraInicio < HoraFim
-            ? h >= HoraInicio && h < HoraFim
-            : h >= HoraInicio || h < HoraFim;
+        int h = t.Hour, ini = ExpedienteInicio, fim = ExpedienteFim;
+        bool Trabalha(DateTime dia) => DiasExpediente.Contains((int)dia.DayOfWeek);
+        if (ini < fim) return Trabalha(t) && h >= ini && h < fim;
+        // Turno que atravessa a meia-noite: a parte da madrugada pertence ao dia anterior.
+        return (h >= ini && Trabalha(t)) || (h < fim && Trabalha(t.AddDays(-1)));
     }
+
+    public bool DentroDaJanela(DateTime agora) => Perfil switch
+    {
+        "Trabalho" => !EmExpediente(agora),
+        "Jogos" => agora.Hour >= JogosInicio && agora.Hour < JogosFim,
+        _ => true,
+    };
 
     public bool BackupConfigurado => PastasBackup.Count > 0 && !string.IsNullOrWhiteSpace(DestinoBackup);
 }

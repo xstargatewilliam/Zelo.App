@@ -8,6 +8,7 @@
     <AssemblyName>Zelo.Service</AssemblyName>
     <OutputType>Exe</OutputType>
     <LangVersion>latest</LangVersion>
+    <ApplicationIcon>..\Zelo.App\Assets\zelo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

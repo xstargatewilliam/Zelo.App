@@ -7,12 +7,14 @@ namespace Zelo.Core;
 /// <summary>Pedido do painel para o serviço (uma linha JSON por conexão).</summary>
 public sealed class Pedido
 {
-    /// <summary>estado | historico | executar | cancelar | config-obter | config-salvar | atualizar</summary>
+    /// <summary>estado | historico | executar | cancelar | config-obter | config-salvar | atualizar | pausar</summary>
     public string Comando { get; set; } = "";
     public Rotina? Rotina { get; set; }
     public bool Simulacao { get; set; }
     public Configuracao? Config { get; set; }
     public int Quantidade { get; set; } = 60;
+    /// <summary>Comando "pausar": minutos de pausa (0 = retomar).</summary>
+    public int Minutos { get; set; }
 }
 
 public sealed class Resposta
@@ -42,6 +44,11 @@ public sealed class EstadoServico
     public DateTime? UltimaVerificacaoAtualizacao { get; set; }
     public string? ErroAtualizacao { get; set; }
     public bool Atualizando { get; set; }
+    public List<EtapaAtual> Etapas { get; set; } = new();
+    public DateTime? PausadoAte { get; set; }
+    /// <summary>Perfil e se agora está dentro do horário em que o Zelo pode trabalhar.</summary>
+    public string Perfil { get; set; } = "Domestico";
+    public bool DentroDaJanela { get; set; } = true;
 }
 
 /// <summary>Cliente usado pelo painel.</summary>
