@@ -1,6 +1,8 @@
-# Zelo — Manutenção do Windows
+![Zelo — vigia o seu PC enquanto ele descansa](docs/banner.png)
 
-Serviço do Windows + painel gráfico que cuida da manutenção do PC sozinho, todo dia, toda semana e todo mês. Ele mostra um **score de saúde** de 0 a 100 e só incomoda quando algo realmente precisa de atenção.
+# Zelo — vigia o seu PC enquanto ele descansa
+
+Serviço do Windows + painel que cuida da manutenção do PC sozinho, quando você não está usando: **vistoria diária**, **revisão semanal** e **check-up mensal**. Ele mostra uma **nota de saúde** de 0 a 100 e só chama você quando algo realmente precisa de atenção.
 
 ## Instalação (uma vez)
 
@@ -24,9 +26,10 @@ Para remover: **`DESINSTALAR.bat`**. Seus arquivos de backup nunca são apagados
 
 ## Depois de instalar
 
-- Abra o painel pelo Menu Iniciar (**Zelo**) ou pelo ícone de escudo perto do relógio.
-- Vá em **Configurações → Backup** e escolha as pastas e o destino (de preferência um disco externo). Sem isso, a categoria Backup fica sempre em alerta, de propósito.
-- Antes de deixar rodar de verdade, use **Modo simulação** e clique em **Diária**, **Semanal** e **Mensal**. A simulação mostra o que cada tarefa faria, sem apagar, instalar ou alterar nada.
+- Na primeira vez, o Zelo abre um assistente de 3 passos: quando ele pode trabalhar (casa, trabalho com o **seu** expediente — inclusive noturno — ou jogos), o que copiar no backup e uma primeira vistoria em simulação.
+- Depois, abra o painel pelo Menu Iniciar (**Zelo**) ou pelo ícone da lua perto do relógio. O pontinho do ícone fica verde, âmbar ou coral conforme a saúde do PC.
+- **Simular antes** mostra o que cada verificação faria, sem apagar, instalar ou alterar nada. A seta ao lado de **Cuidar agora** roda ou simula a revisão semanal e o check-up mensal.
+- No menu do ícone da bandeja dá para **pausar por 1 hora**.
 
 ## Atualização automática
 
@@ -37,7 +40,7 @@ Uma vez por dia o serviço consulta a página **Releases** deste repositório. Q
 3. para o serviço, troca os arquivos, guarda uma cópia da versão anterior e volta a ela se a cópia falhar;
 4. reinicia o serviço e reabre o painel na bandeja.
 
-Nunca atualiza no meio de uma rotina. Para desligar, desmarque **"Atualizar o Zelo sozinho..."** em Configurações → Atualizações e segurança; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização agora** (Configurações → Sobre) instala na hora. Só administradores podem atualizar.
+Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo** em Ajustes → Atualizações; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização** (Ajustes → Sobre) instala na hora. Só administradores podem atualizar.
 
 **Para quem mantém o projeto:** suba o número em `<Version>` no `Directory.Build.props` e envie para o GitHub. O GitHub Actions compila e publica a versão em Releases sozinho.
 
@@ -45,15 +48,15 @@ Nunca atualiza no meio de uma rotina. Para desligar, desmarque **"Atualizar o Ze
 
 | Rotina | Tarefas |
 |---|---|
-| **Diária** | Atualização do antivírus + verificação rápida · saúde dos discos (SMART: desgaste, temperatura, erros) · espaço livre · erros graves no Visualizador de Eventos (telas azuis, desligamentos inesperados, falhas de disco) · reinicialização pendente · limpeza de temporários antigos · limpeza da pasta Downloads (opcional, só arquivos antigos) · backup incremental |
-| **Semanal** | Ponto de restauração · Windows Update (sem upgrades de versão) · drivers pelo Windows Update (opcional, sem os de vídeo) · placa de vídeo: idade do driver e software do fabricante para atualizar · atualização de programas (winget) · TRIM nos SSDs / desfragmentação só em HDs · Lixeira antiga e cache de navegadores (Chrome, Edge, Firefox, Opera/Opera GX — opcional) · programas novos na inicialização |
-| **Mensal** | DISM + SFC · limpeza segura do WinSxS · verificação do sistema de arquivos (sem reiniciar) · auditoria de segurança (firewall, UAC, BitLocker, SMBv1, administradores novos) · verificação completa do antivírus · **teste do backup** (compara arquivos por SHA-256) · saúde da bateria · maiores arquivos · drivers muito antigos |
+| **Vistoria diária** | Atualização do antivírus + verificação rápida · saúde dos discos (SMART: desgaste, temperatura, erros) · espaço livre · erros graves no Visualizador de Eventos (telas azuis, desligamentos inesperados, falhas de disco) · reinicialização pendente · limpeza de temporários antigos · limpeza da pasta Downloads (opcional, só arquivos antigos) · backup incremental |
+| **Revisão semanal** | Ponto de restauração · Windows Update (sem upgrades de versão) · drivers pelo Windows Update (opcional, sem os de vídeo) · placa de vídeo: idade do driver e software do fabricante para atualizar · atualização de programas (winget) · TRIM nos SSDs / desfragmentação só em HDs · Lixeira antiga e cache de navegadores (Chrome, Edge, Firefox, Opera/Opera GX — opcional) · programas novos na inicialização |
+| **Check-up mensal** | DISM + SFC · limpeza segura do WinSxS · verificação do sistema de arquivos (sem reiniciar) · auditoria de segurança (firewall, UAC, BitLocker, SMBv1, administradores novos) · verificação completa do antivírus · **teste do backup** (compara arquivos por SHA-256) · saúde da bateria · maiores arquivos · drivers muito antigos |
 
 ### Quando as rotinas rodam
 
 - O serviço confere a cada 5 minutos se alguma rotina venceu.
 - Ele só começa quando:
-  - está dentro da janela de horário;
+  - está no horário do perfil: **Casa** (qualquer hora), **Trabalho** (fora do expediente que você define, em horas e dias da semana — funciona para turno da noite, como 22h às 6h) ou **Jogos** (2h às 8h);
   - o notebook está na tomada (configurável);
   - o PC está ocioso (CPU baixa).
 - Se o PC ficou desligado, a rotina roda na próxima oportunidade.
