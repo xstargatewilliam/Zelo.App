@@ -294,9 +294,10 @@ public partial class MainWindow : Window
         ListaAreas.ItemsSource = ordem.Select(c =>
         {
             if (!s.Areas.TryGetValue(c.ToString(), out var a))
-                return new ItemArea { Nome = Palavras.Area(c), Texto = "Ainda não verificada.", StatusTexto = "Sem dados", Cor = Cores.Suave, Icone = Icones.Pulado };
+                return new ItemArea { Categoria = c, Nome = Palavras.Area(c), Texto = "Ainda não verificada.", StatusTexto = "Sem dados", Cor = Cores.Suave, Icone = Icones.Pulado };
             return new ItemArea
             {
+                Categoria = c,
                 Nome = Palavras.Area(c),
                 Texto = a.Desatualizado ? a.Texto + " (verificação antiga)" : a.Texto,
                 StatusTexto = Palavras.Status(a.Status),
@@ -314,6 +315,7 @@ public partial class MainWindow : Window
         // Pontos de atenção
         var itens = pontos.Select(p => new ItemPonto
         {
+            Chave = p.TarefaId,
             Titulo = p.Resumo,
             Sub = $"{p.Nome} · {Palavras.Quando(p.Quando)}{(p.Desatualizado ? " · vale conferir de novo" : "")}",
             Cor = Cores.De(p.Status), CorFundo = Cores.FundoDe(p.Status), Icone = Icones.De(p.Categoria),
@@ -324,6 +326,46 @@ public partial class MainWindow : Window
         ListaPontos.ItemsSource = itens;
         TxtSemPontos.Visibility = itens.Count == 0 && s.Geral >= 0 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    // ================================================================ Detalhe de uma área
+
+    private void Area_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is Categoria c) AbrirArea(c);
+    }
+
+    private void AbrirArea(Categoria c)
+    {
+        var desligadas = _config?.TarefasDesativadas ?? new List<string>();
+        var itens = Catalogo.Todas.Where(t => t.Categoria == c).Select(t =>
+        {
+            ResultadoTarefa? r = null;
+            for (int i = _historico.Count - 1; i >= 0 && r is null; i--)
+            {
+                if (_historico[i].Simulacao) continue;
+                r = _historico[i].Resultados.LastOrDefault(x => x.TarefaId == t.Id && x.Status != StatusTarefa.Ignorada);
+            }
+            return ItemVerificacao.De(t, r, desligadas.Contains(t.Id));
+        }).OrderBy(i => i.Ordem).ToList();
+
+        StatusTarefa? status = null;
+        string texto = "Ainda não verificada.";
+        if (_estado?.Saude.Areas.TryGetValue(c.ToString(), out var a) == true)
+        {
+            status = a.Status;
+            texto = $"{Palavras.Status(a.Status)} · {a.Texto}";
+        }
+        TxtAreaTitulo.Text = Palavras.Area(c);
+        TxtAreaSub.Text = texto;
+        IconeArea.Data = Icones.De(c);
+        IconeArea.Stroke = status is null ? Cores.Suave : Cores.De(status.Value);
+        IconeAreaFundo.Background = status is null ? Cores.NeutroFundo : Cores.FundoDe(status.Value);
+        ListaVerificacoes.ItemsSource = itens;
+        RolagemArea.ScrollToTop();
+        PainelArea.Visibility = Visibility.Visible;
+    }
+
+    private void FecharArea_Click(object sender, RoutedEventArgs e) => PainelArea.Visibility = Visibility.Collapsed;
 
     private static string Pendencias(int n) => n switch
     {
@@ -1136,6 +1178,12 @@ public partial class MainWindow : Window
         Avancado_Click(this, new RoutedEventArgs());
         await Esperar();
         SalvarConteudo(ConteudoAjustes, System.IO.Path.Combine(pasta, "4-ajustes.png"));
+
+        NavInicio.IsChecked = true;
+        AbrirArea(Categoria.Seguranca);
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "8-detalhe-area.png"));
+        PainelArea.Visibility = Visibility.Collapsed;
 
         NavOtimizar.IsChecked = true;
         MontarOtimizacaoDeExemplo();

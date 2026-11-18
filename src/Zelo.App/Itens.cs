@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using Zelo.Core;
+using Zelo.Core.Tarefas;
 
 namespace Zelo.App;
 
@@ -152,12 +153,59 @@ public static class Palavras
 /// <summary>Uma das cinco áreas na tela inicial.</summary>
 public sealed class ItemArea
 {
+    public Categoria Categoria { get; init; }
     public string Nome { get; init; } = "";
     public string Texto { get; init; } = "";
     public string StatusTexto { get; init; } = "";
     public Brush Cor { get; init; } = Cores.Suave;
     public Brush Borda { get; init; } = Cores.Linha;
     public Geometry Icone { get; init; } = Icones.Pulado;
+}
+
+/// <summary>Uma verificação dentro do detalhe de uma área (Disco, Segurança…).</summary>
+public sealed class ItemVerificacao
+{
+    public string Nome { get; init; } = "";
+    public string StatusTexto { get; init; } = "";
+    public string Resumo { get; init; } = "";
+    public string Quando { get; init; } = "";
+    public Brush Cor { get; init; } = Cores.Suave;
+    public Brush CorFundo { get; init; } = Cores.NeutroFundo;
+    public Geometry Icone { get; init; } = Icones.Pulado;
+    public List<AcaoPonto> Acoes { get; init; } = new();
+    public List<ItemDetalheTexto> Detalhes { get; init; } = new();
+    public int Ordem { get; init; }
+    public Visibility VisAcoes => Acoes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility VisDetalhes => Detalhes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public static ItemVerificacao De(Tarefa t, ResultadoTarefa? r, bool desligada)
+    {
+        var nomeRotina = Palavras.Rotina(t.Rotinas[0]).ToLowerInvariant();
+        var onde = (t.Rotinas[0] == Rotina.Mensal ? "no " : "na ") + nomeRotina;
+        if (desligada)
+            return new ItemVerificacao { Nome = t.Nome, StatusTexto = "Desligada", Resumo = "Você desligou esta verificação nos Ajustes.", Ordem = 9 };
+        if (r is null)
+            return new ItemVerificacao { Nome = t.Nome, StatusTexto = "Ainda não rodou", Resumo = $"Roda {onde}.", Ordem = 8 };
+
+        var ponto = new PontoAtencao { TarefaId = t.Id, Nome = t.Nome, Categoria = t.Categoria, Status = r.Status, Resumo = r.Resumo };
+        var acoes = ItemPonto.AcoesPara(ponto);
+        if (r.Status is StatusTarefa.Ok or StatusTarefa.Ignorada)
+            acoes = acoes.Where(a => !a.Id.StartsWith("dispensar:") && !a.Id.StartsWith("tarefa:")).ToList();
+        return new ItemVerificacao
+        {
+            Nome = t.Nome,
+            StatusTexto = Palavras.Status(r.Status),
+            Resumo = string.IsNullOrWhiteSpace(r.Resumo) ? "Sem observações." : r.Resumo,
+            Quando = $"{Palavras.Quando(r.Fim)} · {onde}",
+            Cor = Cores.De(r.Status), CorFundo = Cores.FundoDe(r.Status), Icone = Icones.De(r.Status),
+            Acoes = acoes,
+            Detalhes = r.Detalhes.Where(d => !string.IsNullOrWhiteSpace(d)).Select(ItemDetalheTexto.De).ToList(),
+            Ordem = r.Status switch
+            {
+                StatusTarefa.Critico => 0, StatusTarefa.Erro => 1, StatusTarefa.Aviso => 2, StatusTarefa.Ok => 3, _ => 4,
+            },
+        };
+    }
 }
 
 /// <summary>Um botão de ação num ponto de atenção.</summary>
@@ -171,7 +219,11 @@ public sealed class AcaoPonto
 /// <summary>Um item de "Precisa da sua atenção".</summary>
 public sealed class ItemPonto : INotifyPropertyChanged
 {
-    private bool _expandido;
+    /// <summary>Os cartões abertos continuam abertos quando o painel se atualiza (a cada 2 segundos).</summary>
+    private static readonly HashSet<string> Abertos = new();
+
+    /// <summary>Identifica o cartão entre uma atualização e outra.</summary>
+    public string Chave { get; init; } = "";
 
     public string Titulo { get; init; } = "";
     public string Sub { get; init; } = "";
@@ -186,11 +238,11 @@ public sealed class ItemPonto : INotifyPropertyChanged
 
     public bool Expandido
     {
-        get => _expandido;
+        get => Chave.Length > 0 && Abertos.Contains(Chave);
         set
         {
-            if (_expandido == value) return;
-            _expandido = value;
+            if (Expandido == value || Chave.Length == 0) return;
+            if (value) Abertos.Add(Chave); else Abertos.Remove(Chave);
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Expandido)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextoDetalhes)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VisDetalhes)));

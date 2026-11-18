@@ -82,7 +82,7 @@ public sealed class ServidorPipe : BackgroundService
             {
                 var pedido = Json.Desserializar<Pedido>(linha) ?? new Pedido();
                 string conta = "?";
-                bool EhAdmin() { var (admin, c) = Identificar(pipe); conta = c; return admin; }
+                bool EhAdmin() { var (admin, c, _) = Identificar(pipe); conta = c; return admin; }
                 resposta = pedido.Comando.StartsWith("otimizar-")
                     ? await OtimizarAsync(pedido, pipe, EhAdmin, parar)
                     : Processar(pedido, EhAdmin);
@@ -97,42 +97,85 @@ public sealed class ServidorPipe : BackgroundService
         catch { /* cliente desconectou */ }
     }
 
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetNamedPipeClientProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint pid);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint acesso, bool herdar, uint pid);
+
+    [System.Runtime.InteropServices.DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr processo, uint acesso, out IntPtr token);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr h);
+
     /// <summary>
-    /// Verifica se quem conectou no pipe é administrador do PC. O painel roda sem elevação, então
-    /// olhamos três coisas: o grupo Administradores ativo no token; o mesmo grupo como "deny-only"
-    /// (administrador com UAC); e, se o token não mostrar nenhum dos dois (como na "Proteção de
-    /// administrador" do Windows 11), a lista de membros do grupo Administradores do PC. Na dúvida, nega.
+    /// Descobre quem está do outro lado do pipe pelo token do processo do painel, lido pelo próprio
+    /// serviço (SYSTEM). Antes isso era feito "personificando" o painel em nível de identificação,
+    /// e nesse nível o Windows recusa até a consulta do nome da conta, então ninguém era reconhecido.
     /// </summary>
-    private static (bool Admin, string Conta) Identificar(NamedPipeServerStream pipe)
+    private static WindowsIdentity? IdentidadeDoCliente(NamedPipeServerStream pipe)
     {
-        const string admins = "S-1-5-32-544";
-        bool ativo = false, filtrado = false;
-        string conta = "?", grupos = "";
+        const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, TOKEN_QUERY = 0x8, TOKEN_DUPLICATE = 0x2;
+        try
+        {
+            if (GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var pid))
+            {
+                var proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                if (proc != IntPtr.Zero)
+                {
+                    try
+                    {
+                        if (OpenProcessToken(proc, TOKEN_QUERY | TOKEN_DUPLICATE, out var token))
+                        {
+                            try { return new WindowsIdentity(token); }
+                            finally { CloseHandle(token); }
+                        }
+                    }
+                    finally { CloseHandle(proc); }
+                }
+            }
+        }
+        catch (Exception ex) { Registro.Escrever("Identificar pelo processo falhou: " + ex.Message); }
+
+        // Plano B: copia o token durante a personificação e lê tudo depois, já como SYSTEM.
+        WindowsIdentity? copia = null;
         try
         {
             pipe.RunAsClient(() =>
             {
-                // ifImpersonating: true → null se a personificação falhou (nunca cai no token do SYSTEM).
                 using var id = WindowsIdentity.GetCurrent(true);
-                if (id is null) return;
-                conta = id.Name;
-                ativo = id.Groups?.Any(g => g.Value == admins) == true;
-                filtrado = id.Claims.Any(c => c.Type == ClaimTypes.DenyOnlySid && c.Value == admins);
-                grupos = string.Join(",", id.Claims.Where(c => c.Type is ClaimTypes.GroupSid or ClaimTypes.DenyOnlySid)
-                    .Select(c => c.Value).Where(v => v.StartsWith("S-1-5-32-")).Distinct());
+                if (id is not null) copia = new WindowsIdentity(id.AccessToken.DangerousGetHandle());
             });
         }
-        catch (Exception ex)
-        {
-            Registro.Escrever("Não foi possível identificar quem conectou no painel: " + ex.Message);
-            return (false, conta);
-        }
-        if (ativo || filtrado) return (true, conta);
+        catch (Exception ex) { Registro.Escrever("Identificar pela personificação falhou: " + ex.Message); }
+        return copia;
+    }
 
-        bool membro = conta != "?" && MembroDosAdministradores(conta);
+    /// <summary>
+    /// É administrador do PC? Vale o grupo Administradores ativo (painel elevado), como "deny-only"
+    /// (administrador com UAC, o caso normal) ou, se o token não mostrar nenhum dos dois (Proteção de
+    /// administrador do Windows 11), a lista de membros do grupo. Na dúvida, nega.
+    /// </summary>
+    private static (bool Admin, string Conta, string? Sid) Identificar(NamedPipeServerStream pipe)
+    {
+        const string admins = "S-1-5-32-544";
+        using var id = IdentidadeDoCliente(pipe);
+        if (id is null) return (false, "?", null);
+        string sid = id.User?.Value ?? "";
+        string conta;
+        try { conta = id.Name; } catch { conta = sid; }
+        bool ativo = id.Groups?.Any(g => g.Value == admins) == true;
+        bool filtrado = id.Claims.Any(c => c.Type == ClaimTypes.DenyOnlySid && c.Value == admins);
+        if (ativo || filtrado) return (true, conta, sid);
+        bool membro = MembroDosAdministradores(conta);
         if (!membro)
+        {
+            var grupos = string.Join(",", id.Claims.Where(c => c.Type is ClaimTypes.GroupSid or ClaimTypes.DenyOnlySid)
+                .Select(c => c.Value).Where(v => v.StartsWith("S-1-5-32-")).Distinct());
             Registro.Escrever($"Pedido de administrador recusado para {conta} (grupos locais no token: {(grupos.Length == 0 ? "nenhum" : grupos)}).");
-        return (membro, conta);
+        }
+        return (membro, conta, sid);
     }
 
     [System.Runtime.InteropServices.DllImport("netapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
@@ -173,24 +216,17 @@ public sealed class ServidorPipe : BackgroundService
     private static Resposta ExplicarRecusa(Resposta r, string conta)
     {
         if (!r.Ok && r.Mensagem?.StartsWith("Só administradores") == true)
-            r.Mensagem += $"\n\nO Windows informou a conta {conta}, que não está no grupo Administradores deste PC.";
+            r.Mensagem += conta == "?"
+                ? "\n\nO Zelo não conseguiu identificar a sua conta. Feche o painel e abra de novo; se continuar, o detalhe fica no log do Zelo."
+                : $"\n\nO Windows informou a conta {conta}, que não está no grupo Administradores deste PC.";
         return r;
     }
 
     /// <summary>Quem está no painel (para os ajustes que valem só para essa pessoa).</summary>
     private static string? SidDoCliente(NamedPipeServerStream pipe)
     {
-        string? sid = null;
-        try
-        {
-            pipe.RunAsClient(() =>
-            {
-                using var id = WindowsIdentity.GetCurrent(true);
-                sid = id?.User?.Value;
-            });
-        }
-        catch { }
-        return sid;
+        using var id = IdentidadeDoCliente(pipe);
+        return id?.User?.Value;
     }
 
     private async Task<Resposta> OtimizarAsync(Pedido p, NamedPipeServerStream pipe, Func<bool> ehAdministrador, CancellationToken parar)
@@ -250,9 +286,7 @@ public sealed class ServidorPipe : BackgroundService
                 return new Resposta { Mensagem = $"Rotina {rotina.Nome()} iniciada{(sim ? " em modo simulação" : "")}." };
 
             case "atualizar":
-                // Instala código novo como SYSTEM: só administradores.
-                if (!ehAdministrador())
-                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem atualizar o Zelo." };
+                // Só instala o pacote oficial do GitHub, conferido pelo SHA-256 (o mesmo da atualização automática).
                 if (_motor.Ocupado)
                     return new Resposta { Ok = false, Mensagem = "Espere a rotina em andamento terminar para atualizar." };
                 if (Atualizador.EmAndamento)
@@ -267,9 +301,7 @@ public sealed class ServidorPipe : BackgroundService
             case "dispensar":
                 if (string.IsNullOrWhiteSpace(p.TarefaId) || Catalogo.Todas.All(t => t.Id != p.TarefaId))
                     return new Resposta { Ok = false, Mensagem = "Verificação desconhecida." };
-                // Dispensar alertas de segurança esconderia um problema real: só administradores.
-                if (!ehAdministrador())
-                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem dispensar alertas." };
+                // Só esconde o alerta até a próxima verificação; se o problema continuar, ele volta.
                 Dispensas.Dispensar(p.TarefaId);
                 Registro.Escrever($"Alerta de {p.TarefaId} dispensado pelo usuário" + (string.IsNullOrWhiteSpace(p.Motivo) ? "." : $": {p.Motivo}"));
                 return new Resposta { Mensagem = "Anotado. O alerta sai da sua nota até a próxima verificação." };
@@ -305,11 +337,13 @@ public sealed class ServidorPipe : BackgroundService
 
             case "config-salvar":
                 if (p.Config is null) return new Resposta { Ok = false, Mensagem = "Configuração vazia." };
-                // A configuração decide o que o serviço (SYSTEM) apaga e copia: só administradores alteram.
-                if (!ehAdministrador())
+                // Horários, limpeza e avisos qualquer pessoa ajusta. O que decide o que o serviço (SYSTEM)
+                // copia ou apaga fora das pastas temporárias, ou o que ele instala, só administradores.
+                var sensivel = MudancasSensiveis(ArmazemConfig.Carregar(), p.Config);
+                if (sensivel.Count > 0 && !ehAdministrador())
                 {
-                    Registro.Escrever("Alteração de configuração recusada: usuário sem permissão de administrador.");
-                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem alterar as configurações do Zelo." };
+                    Registro.Escrever("Alteração de configuração recusada (sem permissão de administrador): " + string.Join(", ", sensivel));
+                    return new Resposta { Ok = false, Mensagem = $"Só administradores do PC podem mudar: {string.Join(", ", sensivel)}. As outras opções você pode mudar à vontade." };
                 }
                 var erro = ValidarDestino(p.Config);
                 if (erro is not null) return new Resposta { Ok = false, Mensagem = erro };
@@ -320,6 +354,21 @@ public sealed class ServidorPipe : BackgroundService
             default:
                 return new Resposta { Ok = false, Mensagem = $"Comando desconhecido: {p.Comando}" };
         }
+    }
+
+    /// <summary>Opções que fazem o serviço copiar, apagar ou instalar coisas além da limpeza comum.</summary>
+    private static List<string> MudancasSensiveis(Configuracao atual, Configuracao nova)
+    {
+        var r = new List<string>();
+        if (!atual.PastasBackup.SequenceEqual(nova.PastasBackup) || atual.DestinoBackup != nova.DestinoBackup) r.Add("as pastas do backup");
+        if (atual.LimparDownloads != nova.LimparDownloads || (nova.LimparDownloads && atual.DiasDownloads != nova.DiasDownloads)) r.Add("a limpeza de Downloads");
+        if (atual.InstalarWindowsUpdate != nova.InstalarWindowsUpdate) r.Add("a instalação do Windows Update");
+        if (atual.InstalarDriversWU != nova.InstalarDriversWU) r.Add("os drivers pelo Windows Update");
+        if (atual.AtualizarProgramasWinget != nova.AtualizarProgramasWinget) r.Add("a atualização de programas");
+        if (atual.AtualizacaoAutomatica != nova.AtualizacaoAutomatica) r.Add("a atualização automática do Zelo");
+        var seguranca = Catalogo.Todas.Where(t => t.Categoria == Categoria.Seguranca).Select(t => t.Id).ToHashSet();
+        if (nova.TarefasDesativadas.Where(seguranca.Contains).Except(atual.TarefasDesativadas).Any()) r.Add("desligar verificações de segurança");
+        return r;
     }
 
     /// <summary>O serviço roda como SYSTEM: não deixamos o backup escrever em pastas do Windows.</summary>
