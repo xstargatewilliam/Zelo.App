@@ -4,7 +4,7 @@
     <Product>Zelo</Product>
     <!-- Versão do Zelo. Subir este número e enviar para o GitHub publica a versão na página Releases,
          e os PCs com atualização automática instalam sozinhos. -->
-    <Version>1.3.2</Version>
+    <Version>1.3.3</Version>
     <Authors>William Stargate</Authors>
     <Company>William Stargate</Company>
     <Copyright>Copyright (c) 2026 William Stargate</Copyright>

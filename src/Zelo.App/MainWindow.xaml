@@ -326,16 +326,33 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Style="{StaticResource Cartao}" BorderBrush="{Binding Borda}" Margin="0,0,12,12">
+                                <Button Tag="{Binding Categoria}" Click="Area_Click" Cursor="Hand" Margin="0,0,12,12" Focusable="True"
+                                        AutomationProperties.Name="{Binding Nome}" ToolTip="Ver o que o Zelo verificou nesta área">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Moldura" Style="{StaticResource Cartao}" BorderBrush="{Binding Borda}">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Moldura" Property="Background" Value="{StaticResource Hover}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                                    <Setter TargetName="Moldura" Property="BorderBrush" Value="{StaticResource LuarClaro}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal">
                                             <Path Width="13" Height="13" Stretch="Uniform" Stroke="{Binding Cor}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{Binding Icone}" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding StatusTexto}" Foreground="{Binding Cor}" FontSize="13" FontWeight="SemiBold" Margin="8,0,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Nome}" FontSize="15" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                                        <TextBlock Text="{Binding Nome}" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Texto}" Margin="0,8,0,4"/>
                                         <TextBlock Text="{Binding Texto}" Style="{StaticResource TSuave}"/>
+                                        <TextBlock Text="Ver detalhes ›" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource Luar}" Margin="0,10,0,0"/>
                                     </StackPanel>
-                                </Border>
+                                </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -967,6 +984,90 @@
                 </Border>
             </StackPanel>
         </ScrollViewer>
+
+        <!-- ======================= Detalhe de uma área ======================= -->
+        <Grid x:Name="PainelArea" Grid.ColumnSpan="2" Visibility="Collapsed">
+            <Border Background="#D90B0F1A" MouseLeftButtonDown="FecharArea_Click"/>
+            <Border Style="{StaticResource Cartao}" CornerRadius="16" Padding="0" MaxWidth="780" Margin="40,32" BorderBrush="{StaticResource LinhaForte}">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="28,22,20,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="IconeAreaFundo" Width="40" Height="40" CornerRadius="12" VerticalAlignment="Top">
+                            <Path x:Name="IconeArea" Width="18" Height="18" Stretch="Uniform" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,12,0">
+                            <TextBlock x:Name="TxtAreaTitulo" Style="{StaticResource TForte}" FontSize="20"/>
+                            <TextBlock x:Name="TxtAreaSub" Style="{StaticResource TSuave}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <Button Grid.Column="2" Content="Fechar" Style="{StaticResource BotaoSecundario}" MinHeight="36" IsCancel="True" Click="FecharArea_Click" VerticalAlignment="Top"/>
+                    </Grid>
+                    <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource Linha}"/>
+                    <ScrollViewer x:Name="RolagemArea" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="ListaVerificacoes" Margin="28,8,28,20">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource Linha}" BorderThickness="0,0,0,1" Padding="0,16">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="32" Height="32" CornerRadius="9" Background="{Binding CorFundo}" VerticalAlignment="Top">
+                                                <Path Width="14" Height="14" Stretch="Uniform" Stroke="{Binding Cor}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{Binding Icone}"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Nome}" Style="{StaticResource TForte}" FontSize="15" TextWrapping="Wrap"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding StatusTexto}" Foreground="{Binding Cor}" FontSize="12.5" FontWeight="SemiBold" Margin="12,2,0,0"/>
+                                                </Grid>
+                                                <TextBlock Text="{Binding Resumo}" Style="{StaticResource TCorpo}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                                <TextBlock Text="{Binding Quando}" Style="{StaticResource TSuave}" FontSize="12" Margin="0,4,0,0"/>
+                                                <ItemsControl ItemsSource="{Binding Acoes}" Visibility="{Binding VisAcoes}" Margin="0,10,0,0">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Content="{Binding Texto}" Tag="{Binding Id}" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Padding="14,0" Margin="0,0,8,8" Click="AcaoPonto_Click"/>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <Border Visibility="{Binding VisDetalhes}" Background="{StaticResource Barra}" CornerRadius="8" Padding="14,10" Margin="0,8,0,0">
+                                                    <ItemsControl ItemsSource="{Binding Detalhes}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Margin="0,3">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBox Text="{Binding Texto, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
+                                                                             FontSize="12.5" Foreground="{StaticResource Texto2}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                                                    <Button Grid.Column="1" Content="Abrir site" Tag="{Binding Link}" Visibility="{Binding VisLink}" Style="{StaticResource BotaoLink}"
+                                                                            MinHeight="28" FontSize="12.5" Margin="8,0,0,0" Click="AbrirLink_Click"/>
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </Border>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
 
         <!-- ======================= Boas-vindas ======================= -->
         <Grid x:Name="BoasVindas" Grid.ColumnSpan="2" Background="{StaticResource Noite}" Visibility="Collapsed">
