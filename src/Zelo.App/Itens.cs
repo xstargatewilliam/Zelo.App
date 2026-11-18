@@ -180,11 +180,12 @@ public sealed class ItemVerificacao
 
     public static ItemVerificacao De(Tarefa t, ResultadoTarefa? r, bool desligada)
     {
-        var onde = Palavras.Rotina(t.Rotinas[0]).ToLowerInvariant();
+        var nomeRotina = Palavras.Rotina(t.Rotinas[0]).ToLowerInvariant();
+        var onde = (t.Rotinas[0] == Rotina.Mensal ? "no " : "na ") + nomeRotina;
         if (desligada)
             return new ItemVerificacao { Nome = t.Nome, StatusTexto = "Desligada", Resumo = "Você desligou esta verificação nos Ajustes.", Ordem = 9 };
         if (r is null)
-            return new ItemVerificacao { Nome = t.Nome, StatusTexto = "Ainda não rodou", Resumo = $"Roda na {onde}.", Ordem = 8 };
+            return new ItemVerificacao { Nome = t.Nome, StatusTexto = "Ainda não rodou", Resumo = $"Roda {onde}.", Ordem = 8 };
 
         var ponto = new PontoAtencao { TarefaId = t.Id, Nome = t.Nome, Categoria = t.Categoria, Status = r.Status, Resumo = r.Resumo };
         var acoes = ItemPonto.AcoesPara(ponto);
@@ -195,7 +196,7 @@ public sealed class ItemVerificacao
             Nome = t.Nome,
             StatusTexto = Palavras.Status(r.Status),
             Resumo = string.IsNullOrWhiteSpace(r.Resumo) ? "Sem observações." : r.Resumo,
-            Quando = $"{Palavras.Quando(r.Fim)} · na {onde}",
+            Quando = $"{Palavras.Quando(r.Fim)} · {onde}",
             Cor = Cores.De(r.Status), CorFundo = Cores.FundoDe(r.Status), Icone = Icones.De(r.Status),
             Acoes = acoes,
             Detalhes = r.Detalhes.Where(d => !string.IsNullOrWhiteSpace(d)).Select(ItemDetalheTexto.De).ToList(),
