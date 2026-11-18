@@ -188,7 +188,7 @@ public sealed class ItemVerificacao
 
         var ponto = new PontoAtencao { TarefaId = t.Id, Nome = t.Nome, Categoria = t.Categoria, Status = r.Status, Resumo = r.Resumo };
         var acoes = ItemPonto.AcoesPara(ponto);
-        if (r.Status is StatusTarefa.Ok or StatusTarefa.Pulado or StatusTarefa.Ignorada)
+        if (r.Status is StatusTarefa.Ok or StatusTarefa.Ignorada)
             acoes = acoes.Where(a => !a.Id.StartsWith("dispensar:") && !a.Id.StartsWith("tarefa:")).ToList();
         return new ItemVerificacao
         {
