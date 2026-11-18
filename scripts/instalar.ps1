@@ -99,6 +99,9 @@ try {
         robocopy "$pub\$parte" "$dest\$parte" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
         if ($LASTEXITCODE -ge 8) { Falhar "Não foi possível copiar os arquivos para $dest\$parte." }
     }
+    # Arquivos vindos de um zip baixado carregam a "marca da internet", que faz o SmartScreen
+    # barrar o painel. Como a pessoa já aprovou a instalação como administradora, tiramos a marca.
+    Get-ChildItem -Path $dest -Recurse -File | Unblock-File -ErrorAction SilentlyContinue
 
     # Pasta de dados: só SYSTEM e administradores alteram; usuários só leem (relatórios).
     $dados = Join-Path $env:ProgramData 'Zelo'
