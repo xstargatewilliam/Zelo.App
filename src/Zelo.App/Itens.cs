@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using Zelo.Core;
+using Zelo.Core.Tarefas;
 
 namespace Zelo.App;
 
