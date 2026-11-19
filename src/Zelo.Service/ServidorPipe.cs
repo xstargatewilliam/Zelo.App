@@ -37,6 +37,9 @@ public sealed class ServidorPipe : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken parar)
     {
         var seguranca = Seguranca();
+        // Se o PC desligou no meio de uma otimização, desfaz o ajuste que ficou pela metade.
+        try { await Otimizador.RecuperarAsync(parar); }
+        catch (Exception ex) { Registro.Escrever("Otimizar: falha ao recuperar ajustes interrompidos: " + ex.Message); }
         while (!parar.IsCancellationRequested)
         {
             NamedPipeServerStream? pipe = null;
@@ -81,12 +84,10 @@ public sealed class ServidorPipe : BackgroundService
             try
             {
                 var pedido = Json.Desserializar<Pedido>(linha) ?? new Pedido();
-                string conta = "?";
-                bool EhAdmin() { var (admin, c, _) = Identificar(pipe); conta = c; return admin; }
+                bool Elevado() => Identificar(pipe).Elevado;
                 resposta = pedido.Comando.StartsWith("otimizar-")
-                    ? await OtimizarAsync(pedido, pipe, EhAdmin, parar)
-                    : Processar(pedido, EhAdmin);
-                resposta = ExplicarRecusa(resposta, conta);
+                    ? await OtimizarAsync(pedido, pipe, Elevado, parar)
+                    : Processar(pedido, Elevado);
             }
             catch (Exception ex)
             {
@@ -153,11 +154,11 @@ public sealed class ServidorPipe : BackgroundService
     }
 
     /// <summary>
-    /// É administrador do PC? Vale o grupo Administradores ativo (painel elevado), como "deny-only"
-    /// (administrador com UAC, o caso normal) ou, se o token não mostrar nenhum dos dois (Proteção de
-    /// administrador do Windows 11), a lista de membros do grupo. Na dúvida, nega.
+    /// O painel tem a confirmação de administrador do Windows (UAC)? Vale só o grupo Administradores
+    /// ATIVO no token, ou seja, um processo elevado. Uma conta administradora com o painel comum
+    /// (token filtrado pelo UAC) não basta: para ações de alto impacto, o painel pede a confirmação.
     /// </summary>
-    private static (bool Admin, string Conta, string? Sid) Identificar(NamedPipeServerStream pipe)
+    private static (bool Elevado, string Conta, string? Sid) Identificar(NamedPipeServerStream pipe)
     {
         const string admins = "S-1-5-32-544";
         using var id = IdentidadeDoCliente(pipe);
@@ -165,62 +166,16 @@ public sealed class ServidorPipe : BackgroundService
         string sid = id.User?.Value ?? "";
         string conta;
         try { conta = id.Name; } catch { conta = sid; }
-        bool ativo = id.Groups?.Any(g => g.Value == admins) == true;
-        bool filtrado = id.Claims.Any(c => c.Type == ClaimTypes.DenyOnlySid && c.Value == admins);
-        if (ativo || filtrado) return (true, conta, sid);
-        bool membro = MembroDosAdministradores(conta);
-        if (!membro)
-        {
-            var grupos = string.Join(",", id.Claims.Where(c => c.Type is ClaimTypes.GroupSid or ClaimTypes.DenyOnlySid)
-                .Select(c => c.Value).Where(v => v.StartsWith("S-1-5-32-")).Distinct());
-            Registro.Escrever($"Pedido de administrador recusado para {conta} (grupos locais no token: {(grupos.Length == 0 ? "nenhum" : grupos)}).");
-        }
-        return (membro, conta, sid);
+        bool elevado = id.Groups?.Any(g => g.Value == admins) == true;
+        return (elevado, conta, sid);
     }
 
-    [System.Runtime.InteropServices.DllImport("netapi32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-    private static extern int NetUserGetLocalGroups(string? servidor, string usuario, int nivel, int opcoes,
-        out IntPtr buffer, int maximo, out int lidos, out int total);
-
-    [System.Runtime.InteropServices.DllImport("netapi32.dll")]
-    private static extern int NetApiBufferFree(IntPtr buffer);
-
-    /// <summary>Consulta no próprio Windows se a conta está no grupo Administradores (direto ou por outro grupo).</summary>
-    private static bool MembroDosAdministradores(string conta)
+    /// <summary>Resposta que faz o painel pedir a confirmação do Windows e repetir o pedido.</summary>
+    private static Resposta PedirElevacao(string acao) => new()
     {
-        try
-        {
-            var nomeGrupo = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Translate(typeof(NTAccount)).Value;
-            nomeGrupo = nomeGrupo[(nomeGrupo.IndexOf('\\') + 1)..];
-            const int LG_INCLUDE_INDIRECT = 1;
-            int r = NetUserGetLocalGroups(null, conta, 0, LG_INCLUDE_INDIRECT, out var buf, -1, out var lidos, out _);
-            if (r != 0 || buf == IntPtr.Zero) return false;
-            try
-            {
-                for (int i = 0; i < lidos; i++)
-                {
-                    var ptr = System.Runtime.InteropServices.Marshal.ReadIntPtr(buf, i * IntPtr.Size);
-                    var nome = System.Runtime.InteropServices.Marshal.PtrToStringUni(ptr);
-                    if (string.Equals(nome, nomeGrupo, StringComparison.OrdinalIgnoreCase)) return true;
-                }
-            }
-            finally { NetApiBufferFree(buf); }
-        }
-        catch (Exception ex)
-        {
-            Registro.Escrever("Não foi possível consultar o grupo Administradores: " + ex.Message);
-        }
-        return false;
-    }
-
-    private static Resposta ExplicarRecusa(Resposta r, string conta)
-    {
-        if (!r.Ok && r.Mensagem?.StartsWith("Só administradores") == true)
-            r.Mensagem += conta == "?"
-                ? "\n\nO Zelo não conseguiu identificar a sua conta. Feche o painel e abra de novo; se continuar, o detalhe fica no log do Zelo."
-                : $"\n\nO Windows informou a conta {conta}, que não está no grupo Administradores deste PC.";
-        return r;
-    }
+        Ok = false, PrecisaElevar = true,
+        Mensagem = $"Para {acao}, o Windows precisa da confirmação de um administrador do PC.",
+    };
 
     /// <summary>Quem está no painel (para os ajustes que valem só para essa pessoa).</summary>
     private static string? SidDoCliente(NamedPipeServerStream pipe)
@@ -229,7 +184,7 @@ public sealed class ServidorPipe : BackgroundService
         return id?.User?.Value;
     }
 
-    private async Task<Resposta> OtimizarAsync(Pedido p, NamedPipeServerStream pipe, Func<bool> ehAdministrador, CancellationToken parar)
+    private async Task<Resposta> OtimizarAsync(Pedido p, NamedPipeServerStream pipe, Func<bool> elevado, CancellationToken parar)
     {
         switch (p.Comando)
         {
@@ -246,15 +201,14 @@ public sealed class ServidorPipe : BackgroundService
 
             case "otimizar-aplicar":
             case "otimizar-desfazer":
-                // Muda o Windows como SYSTEM: só administradores.
-                if (!ehAdministrador())
-                    return new Resposta { Ok = false, Mensagem = "Só administradores do PC podem otimizar o Windows." };
-                if (_motor.Ocupado)
-                    return new Resposta { Ok = false, Mensagem = "Espere a vistoria em andamento terminar." };
-                if (Atualizador.EmAndamento)
-                    return new Resposta { Ok = false, Mensagem = "O Zelo está se atualizando. Tente de novo em alguns minutos." };
+                // Muda o Windows como SYSTEM: precisa da confirmação de administrador (UAC) a cada vez.
+                var quem = Identificar(pipe);
+                if (!quem.Elevado) return PedirElevacao("otimizar o Windows");
                 var desfazer = p.Comando == "otimizar-desfazer";
-                var erro = Otimizador.Iniciar(p.Ids ?? new(), p.PerfisUso ?? new(), SidDoCliente(pipe), desfazer, _vida.ApplicationStopping);
+                // O painel elevado informa a conta de quem pediu (na Proteção de administrador do Windows 11,
+                // o processo elevado roda com outra conta); sem isso, vale a conta do próprio processo.
+                var sid = Otimizador.SidValido(p.SidUsuario) ? p.SidUsuario : quem.Sid;
+                var erro = Otimizador.Iniciar(p.Ids ?? new(), p.PerfisUso ?? new(), sid, desfazer, p.SemPontoRestauracao, _vida.ApplicationStopping);
                 return erro is null
                     ? new Resposta { Mensagem = desfazer ? "Desfazendo..." : "Aplicando...", Otimizacao = Otimizador.Andamento }
                     : new Resposta { Ok = false, Mensagem = erro };
@@ -262,7 +216,14 @@ public sealed class ServidorPipe : BackgroundService
         return new Resposta { Ok = false, Mensagem = $"Comando desconhecido: {p.Comando}" };
     }
 
-    private Resposta Processar(Pedido p, Func<bool> ehAdministrador)
+    /// <summary>
+    /// Níveis de permissão:
+    /// • livre (qualquer pessoa no painel): ver estado e histórico, rodar e parar vistorias, pausar,
+    ///   silenciar avisos, atualizar o Zelo pelo canal oficial e a maioria dos ajustes;
+    /// • com confirmação do Windows (UAC): otimizar, backup, limpeza de Downloads, instalações automáticas,
+    ///   desligar verificações de segurança e reconhecer alertas de segurança.
+    /// </summary>
+    private Resposta Processar(Pedido p, Func<bool> elevado)
     {
         switch (p.Comando)
         {
@@ -274,7 +235,7 @@ public sealed class ServidorPipe : BackgroundService
 
             case "executar":
                 if (p.Rotina is null) return new Resposta { Ok = false, Mensagem = "Rotina não informada." };
-                if (_motor.Ocupado) return new Resposta { Ok = false, Mensagem = "Já existe uma rotina em andamento." };
+                if (_motor.Ocupado || Coordenador.Atual is not null) return new Resposta { Ok = false, Mensagem = Coordenador.Explicar() };
                 if (Atualizador.EmAndamento) return new Resposta { Ok = false, Mensagem = "O Zelo está se atualizando. Tente de novo em alguns minutos." };
                 var rotina = p.Rotina.Value;
                 var sim = p.Simulacao;
@@ -301,15 +262,25 @@ public sealed class ServidorPipe : BackgroundService
             case "dispensar":
                 if (string.IsNullOrWhiteSpace(p.TarefaId) || Catalogo.Todas.All(t => t.Id != p.TarefaId))
                     return new Resposta { Ok = false, Mensagem = "Verificação desconhecida." };
-                // Só esconde o alerta até a próxima verificação; se o problema continuar, ele volta.
-                Dispensas.Dispensar(p.TarefaId);
-                Registro.Escrever($"Alerta de {p.TarefaId} dispensado pelo usuário" + (string.IsNullOrWhiteSpace(p.Motivo) ? "." : $": {p.Motivo}"));
-                return new Resposta { Mensagem = "Anotado. O alerta sai da sua nota até a próxima verificação." };
+                // Sem motivo: só silencia (a nota continua contando o problema).
+                // Com motivo: a pessoa reconhece o achado; em segurança, isso pede confirmação do Windows.
+                var reconhece = !string.IsNullOrWhiteSpace(p.Motivo);
+                var categoria = Catalogo.Todas.First(t => t.Id == p.TarefaId).Categoria;
+                if (reconhece && categoria == Categoria.Seguranca && !elevado())
+                    return PedirElevacao("confirmar um alerta de segurança");
+                Dispensas.Dispensar(p.TarefaId, p.Motivo);
+                Registro.Escrever($"Alerta de {p.TarefaId} " + (reconhece ? $"reconhecido pelo usuário: {p.Motivo}." : "silenciado pelo usuário."));
+                return new Resposta
+                {
+                    Mensagem = reconhece
+                        ? "Anotado. Conta como resolvido até a próxima verificação."
+                        : "Aviso silenciado. Ele continua contando na nota até uma nova verificação não encontrar mais o problema.",
+                };
 
             case "executar-tarefa":
                 var tarefa = Catalogo.Todas.FirstOrDefault(t => t.Id == p.TarefaId);
                 if (tarefa is null) return new Resposta { Ok = false, Mensagem = "Verificação desconhecida." };
-                if (_motor.Ocupado) return new Resposta { Ok = false, Mensagem = "Já existe uma rotina em andamento." };
+                if (_motor.Ocupado || Coordenador.Atual is not null) return new Resposta { Ok = false, Mensagem = Coordenador.Explicar() };
                 if (Atualizador.EmAndamento) return new Resposta { Ok = false, Mensagem = "O Zelo está se atualizando. Tente de novo em alguns minutos." };
                 var rotinaDaTarefa = tarefa.Rotinas[0];
                 _ = Task.Run(async () =>
@@ -340,11 +311,8 @@ public sealed class ServidorPipe : BackgroundService
                 // Horários, limpeza e avisos qualquer pessoa ajusta. O que decide o que o serviço (SYSTEM)
                 // copia ou apaga fora das pastas temporárias, ou o que ele instala, só administradores.
                 var sensivel = MudancasSensiveis(ArmazemConfig.Carregar(), p.Config);
-                if (sensivel.Count > 0 && !ehAdministrador())
-                {
-                    Registro.Escrever("Alteração de configuração recusada (sem permissão de administrador): " + string.Join(", ", sensivel));
-                    return new Resposta { Ok = false, Mensagem = $"Só administradores do PC podem mudar: {string.Join(", ", sensivel)}. As outras opções você pode mudar à vontade." };
-                }
+                if (sensivel.Count > 0 && !elevado())
+                    return PedirElevacao("mudar " + string.Join(", ", sensivel));
                 var erro = ValidarDestino(p.Config);
                 if (erro is not null) return new Resposta { Ok = false, Mensagem = erro };
                 ArmazemConfig.Salvar(p.Config);

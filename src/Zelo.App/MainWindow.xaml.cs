@@ -345,7 +345,7 @@ public partial class MainWindow : Window
                 if (_historico[i].Simulacao) continue;
                 r = _historico[i].Resultados.LastOrDefault(x => x.TarefaId == t.Id && x.Status != StatusTarefa.Ignorada);
             }
-            return ItemVerificacao.De(t, r, desligadas.Contains(t.Id));
+            return ItemVerificacao.De(t, r, desligadas.Contains(t.Id), _estado?.Saude.Silenciados.Contains(t.Id) == true);
         }).OrderBy(i => i.Ordem).ToList();
 
         StatusTarefa? status = null;
@@ -689,8 +689,9 @@ public partial class MainWindow : Window
             var motivo = partes.Length > 1 ? partes[1] : "";
             try
             {
-                var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "dispensar", TarefaId = partes[0], Motivo = motivo });
+                var r = await Elevacao.EnviarAsync(new Pedido { Comando = "dispensar", TarefaId = partes[0], Motivo = motivo });
                 if (!r.Ok) { Aviso(r.Mensagem ?? "Não deu certo."); return; }
+                if (motivo.Length == 0 && r.Mensagem is not null) Aviso(r.Mensagem);
                 if (motivo == "queda de energia")
                     Aviso("Anotado. Se as quedas de energia forem frequentes, um nobreak (UPS) protege o PC e evita perder arquivos abertos.");
             }
@@ -886,7 +887,7 @@ public partial class MainWindow : Window
         var c = LerConfigDaTela();
         try
         {
-            var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "config-salvar", Config = c });
+            var r = await Elevacao.EnviarAsync(new Pedido { Comando = "config-salvar", Config = c });
             if (!r.Ok)
             {
                 TxtSalvo.Foreground = Cores.Coral;

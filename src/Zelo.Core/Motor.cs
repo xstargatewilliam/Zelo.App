@@ -98,6 +98,8 @@ public sealed class PainelSaude
     public List<PontoAtencao> Pontos { get; set; } = new();
     /// <summary>Por área (nome do enum Categoria): pior situação e a frase que a resume.</summary>
     public Dictionary<string, ResumoArea> Areas { get; set; } = new();
+    /// <summary>Avisos que a pessoa silenciou: saem da lista, mas continuam contando na nota.</summary>
+    public List<string> Silenciados { get; set; } = new();
 }
 
 public sealed class PontoAtencao
@@ -166,17 +168,25 @@ public static class Saude
                 else ultimos[r.TarefaId] = (r, e.Rotina);
             }
 
-        // Alertas dispensados pela pessoa contam como resolvidos até a próxima verificação.
-        var dispensas = Dispensas.Todas();
+        // Duas coisas diferentes:
+        // • Reconhecido (com motivo: "fui eu que desliguei", "são contas minhas"): a pessoa explicou o que
+        //   o Zelo viu, e isso resolve aquele achado até a próxima verificação.
+        // • Silenciado (sem motivo): só tira o aviso da lista. O problema continua contando na nota,
+        //   e só uma nova verificação que não o encontre mais o resolve.
+        var dispensas = Dispensas.Ler();
+        var silenciados = new HashSet<string>();
         foreach (var id in ultimos.Keys.ToList())
         {
             var (res, rot) = ultimos[id];
-            if (res.Status is StatusTarefa.Ok || !dispensas.TryGetValue(id, out var quando) || quando < res.Fim) continue;
-            ultimos[id] = (new ResultadoTarefa
-            {
-                TarefaId = res.TarefaId, Nome = res.Nome, Categoria = res.Categoria, Status = StatusTarefa.Ok,
-                Resumo = "Você marcou como resolvido.", Detalhes = res.Detalhes, Inicio = res.Inicio, Fim = res.Fim,
-            }, rot);
+            if (res.Status is StatusTarefa.Ok || !dispensas.Quando.TryGetValue(id, out var quando) || quando < res.Fim) continue;
+            if (dispensas.Motivos.TryGetValue(id, out var motivo) && !string.IsNullOrWhiteSpace(motivo))
+                ultimos[id] = (new ResultadoTarefa
+                {
+                    TarefaId = res.TarefaId, Nome = res.Nome, Categoria = res.Categoria, Status = StatusTarefa.Ok,
+                    Resumo = $"Você confirmou: {motivo}.", Detalhes = res.Detalhes, Inicio = res.Inicio, Fim = res.Fim,
+                }, rot);
+            else
+                silenciados.Add(id);
         }
         if (desativadas is not null)
             foreach (var id in desativadas) ultimos.Remove(id);
@@ -225,8 +235,9 @@ public static class Saude
                 Desatualizado = agora - escolhido.res.Fim > Validade(escolhido.rotina),
             };
         }
+        painel.Silenciados = silenciados.ToList();
         foreach (var (res, rotina) in ultimos.Values
-                     .Where(v => Gravidade(v.res.Status) > 0)
+                     .Where(v => Gravidade(v.res.Status) > 0 && !silenciados.Contains(v.res.TarefaId))
                      .OrderByDescending(v => Gravidade(v.res.Status)))
             painel.Pontos.Add(new PontoAtencao
             {
@@ -367,6 +378,12 @@ public sealed class Motor
     public async Task<ExecucaoRotina?> ExecutarAsync(Rotina rotina, bool simulacao, string origem, CancellationToken ct, string? somenteTarefa = null)
     {
         if (!await _trava.WaitAsync(0, ct)) return null;
+        if (!Coordenador.Iniciar("rotina"))
+        {
+            _trava.Release();
+            Registro.Escrever($"Rotina {rotina.Nome()} adiada: {Coordenador.Explicar()}");
+            return null;
+        }
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _cts = cts;
         var token = cts.Token;
@@ -438,6 +455,7 @@ public sealed class Motor
             lock (_travaEtapas) _etapas = new();
             _cts = null;
             cts.Dispose();
+            Coordenador.Encerrar("rotina");
             _trava.Release();
         }
     }
@@ -480,16 +498,25 @@ public static class Pausa
 /// </summary>
 public static class Dispensas
 {
-    private sealed class Dados { public Dictionary<string, DateTime> Quando { get; set; } = new(); }
+    public sealed class Dados
+    {
+        public Dictionary<string, DateTime> Quando { get; set; } = new();
+        /// <summary>Vazio = só silenciado; preenchido = a pessoa explicou (reconheceu) o achado.</summary>
+        public Dictionary<string, string> Motivos { get; set; } = new();
+    }
 
-    public static Dictionary<string, DateTime> Todas() => Estado.Ler<Dados>("dispensas")?.Quando ?? new();
+    public static Dados Ler() => Estado.Ler<Dados>("dispensas") ?? new Dados();
+
+    public static Dictionary<string, DateTime> Todas() => Ler().Quando;
 
     public static DateTime? De(string tarefaId) => Todas().TryGetValue(tarefaId, out var d) ? d : null;
 
-    public static void Dispensar(string tarefaId)
+    public static void Dispensar(string tarefaId, string? motivo = null)
     {
-        var d = Estado.Ler<Dados>("dispensas") ?? new Dados();
+        var d = Ler();
         d.Quando[tarefaId] = DateTime.Now;
+        if (string.IsNullOrWhiteSpace(motivo)) d.Motivos.Remove(tarefaId);
+        else d.Motivos[tarefaId] = motivo.Trim();
         Estado.Gravar("dispensas", d);
     }
 }

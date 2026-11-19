@@ -27,6 +27,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Cópia elevada (UAC) que só repassa uma ação de alto impacto ao serviço e fecha.
+        if (e.Args.Length >= 3 && e.Args[0] == "--pedido")
+        {
+            Shutdown(Elevacao.Executar(e.Args[1], e.Args[2]));
+            return;
+        }
+
         // Modo usado no GitHub Actions: gera capturas das telas com dados de exemplo e sai.
         if (e.Args.Length >= 2 && e.Args[0] == "--capturas")
         {

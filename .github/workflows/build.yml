@@ -9,12 +9,16 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Por padrão, só leitura. Só os trabalhos que publicam (capturas e versões) recebem escrita.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   compilar:
     runs-on: windows-latest
+    outputs:
+      numero: ${{ steps.versao.outputs.numero }}
+      publicada: ${{ steps.versao.outputs.publicada }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,20 +56,12 @@ jobs:
           $p = Start-Process -FilePath pacote/publicado/Painel/Zelo.App.exe -ArgumentList '--capturas', "$PWD/capturas" -Wait -PassThru
           if (Test-Path capturas/erro.txt) { Get-Content capturas/erro.txt }
           if ($p.ExitCode -ne 0) { Write-Error "O painel falhou ao abrir (código $($p.ExitCode))"; exit 1 }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          $dest = Join-Path $env:RUNNER_TEMP 'capturas-branch'
-          git worktree add --orphan -b capturas-tmp $dest 2>$null
-          if ($LASTEXITCODE -ne 0) { git worktree add --detach $dest; Push-Location $dest; git checkout --orphan capturas-tmp; Pop-Location }
-          Push-Location $dest
-          git rm -rfq . 2>$null
-          Copy-Item ../../capturas/* . -ErrorAction SilentlyContinue
-          Copy-Item "$env:GITHUB_WORKSPACE/capturas/*" .
-          git add -A
-          git commit -qm "Capturas de ${{ github.sha }}"
-          git push -f origin HEAD:capturas
-          Pop-Location
-          exit 0
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+        with:
+          name: capturas
+          path: capturas/*.png
 
       - name: Montar o pacote
         shell: pwsh
@@ -83,12 +79,44 @@ jobs:
             Zelo-win-x64.zip
             Zelo-win-x64.zip.sha256
 
+  # Grava as capturas no ramo "capturas" (para revisar as telas sem baixar artefatos).
+  capturas:
+    needs: compilar
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: capturas
+          path: capturas
+      - name: Enviar para o ramo capturas
+        run: |
+          cd capturas
+          git init -q -b capturas
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Capturas de ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" capturas
+
+  # Publica a versão nova na página Releases (só na main, só quando a versão ainda não existe).
+  publicar:
+    needs: compilar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.compilar.outputs.publicada == 'False'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Zelo-win-x64
       - name: Publicar na página Releases
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.versao.outputs.publicada == 'False'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.versao.outputs.numero }}
-          name: Zelo ${{ steps.versao.outputs.numero }}
+          tag_name: v${{ needs.compilar.outputs.numero }}
+          name: Zelo ${{ needs.compilar.outputs.numero }}
           target_commitish: ${{ github.sha }}
           files: |
             Zelo-win-x64.zip
