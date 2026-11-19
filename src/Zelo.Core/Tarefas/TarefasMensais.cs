@@ -421,7 +421,7 @@ public sealed class VerificarBackup : Tarefa
 {
     public override string Id => "verificar-backup";
     public override string Nome => "Teste do backup";
-    public override string Descricao => "Sorteia arquivos do backup e confere, byte a byte (SHA-256), se são iguais aos originais.";
+    public override string Descricao => "Sorteia 25 arquivos do backup e confere, byte a byte (SHA-256), se são iguais aos originais. É uma amostra, não a conferência de todos os arquivos.";
     public override Categoria Categoria => Categoria.Backup;
     public override Rotina[] Rotinas => new[] { Rotina.Mensal };
 
@@ -448,7 +448,7 @@ public sealed class VerificarBackup : Tarefa
         if (pares.Count == 0)
             return Res(StatusTarefa.Aviso, "Nenhum arquivo encontrado no backup.", det);
 
-        int iguais = 0, divergentes = 0, alteradosDepois = 0;
+        int iguais = 0, divergentes = 0, alteradosDepois = 0, soTamanho = 0;
         foreach (var (copia, original) in pares.OrderBy(_ => Random.Shared.Next()).Take(25))
         {
             ct.ThrowIfCancellationRequested();
@@ -459,7 +459,13 @@ public sealed class VerificarBackup : Tarefa
                 var fc = new FileInfo(copia);
                 // Original mudou depois do backup: não dá para comparar, não é erro.
                 if (fo.LastWriteTimeUtc > fc.LastWriteTimeUtc.AddSeconds(2)) { alteradosDepois++; continue; }
-                if (fo.Length > 500L * 1024 * 1024) { iguais++; continue; } // grandes: só tamanho
+                // Muito grandes (mais de 500 MB): só o tamanho, para não ocupar o disco por horas.
+                if (fo.Length > 500L * 1024 * 1024)
+                {
+                    if (fo.Length == fc.Length) soTamanho++;
+                    else { divergentes++; det.Add("TAMANHO DIFERENTE: " + copia); }
+                    continue;
+                }
                 bool igual = fo.Length == fc.Length;
                 if (igual)
                 {
@@ -479,12 +485,14 @@ public sealed class VerificarBackup : Tarefa
             catch (Exception ex) { divergentes++; det.Add($"Ilegível: {copia} ({ex.Message})"); }
         }
 
-        det.Insert(1, $"Amostra: {iguais} idênticos, {divergentes} com problema, {alteradosDepois} alterados depois do backup");
+        det.Insert(1, $"Amostra de {Math.Min(25, pares.Count)} entre {pares.Count} arquivos do backup: {iguais} conferidos byte a byte, "
+                      + $"{soTamanho} grandes conferidos só pelo tamanho, {divergentes} com problema, {alteradosDepois} alterados depois do backup.");
         if (divergentes > 0)
             return Res(StatusTarefa.Critico, $"{divergentes} arquivo(s) do backup não batem com o original — o backup pode estar corrompido.", det);
         if (ultimo is null || ultimo < DateTime.Now.AddDays(-7))
             return Res(StatusTarefa.Aviso, "Cópias conferem, mas o último backup completo tem mais de 7 dias.", det);
-        return Res(StatusTarefa.Ok, $"Backup testado: {iguais} arquivo(s) conferidos byte a byte.", det);
+        return Res(StatusTarefa.Ok, $"Amostra do backup em ordem: {iguais} arquivo(s) sorteados conferidos byte a byte"
+                                    + (soTamanho > 0 ? $" e {soTamanho} grande(s) pelo tamanho." : "."), det);
     }
 
     private static async Task<byte[]> Hash(string arquivo, CancellationToken ct)

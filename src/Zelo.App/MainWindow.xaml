@@ -803,6 +803,17 @@
                             </StackPanel>
                             <Button Grid.Column="1" x:Name="BtnDestino" Content="Escolher destino" Style="{StaticResource BotaoPrimario}" FontSize="14" VerticalAlignment="Center" Click="EscolherDestino_Click"/>
                         </Grid>
+                        <Border Background="{StaticResource Ceu}" CornerRadius="10" Padding="14,10" Margin="0,14,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource TSuave}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"
+                                           Text="Quando um arquivo muda, o Zelo guarda a versão anterior por 30 dias. Para recuperar, abra as versões: elas ficam em pastas com a data e a hora."/>
+                                <Button Grid.Column="1" x:Name="BtnVersoes" Content="Abrir versões anteriores" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Click="AbrirVersoes_Click"/>
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </Border>
 
@@ -1142,6 +1153,44 @@
                             <TextBlock Text="Tudo pronto." Style="{StaticResource TTitulo}" Margin="0,0,0,8"/>
                             <TextBlock Text="Para começar, que tal ver o que eu faria no seu PC? A simulação só mostra; não muda nada." Style="{StaticResource TCorpo}" FontSize="15"/>
                             <TextBlock Text="Depois disso, eu sigo sozinho: vistoria todo dia, revisão toda semana e um check-up por mês. Você pode mudar tudo em Ajustes." Style="{StaticResource TSuave}" Margin="0,12,0,0"/>
+                            <TextBlock Text="O que eu posso instalar sozinho?" Style="{StaticResource TForte}" FontSize="15" Margin="0,20,0,4"/>
+                            <TextBlock Text="Você decide agora. Se mudar algo, o Windows pede a sua confirmação de administrador." Style="{StaticResource TSuave}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                            <Border Style="{StaticResource Cartao}" Padding="0">
+                                <StackPanel>
+                                    <Border Style="{StaticResource LinhaAjuste}">
+                                        <CheckBox x:Name="BvWU" Style="{StaticResource Interruptor}">
+                                            <StackPanel>
+                                                <TextBlock Text="Atualizações do Windows" Style="{StaticResource TForte}"/>
+                                                <TextBlock Text="Correções de segurança e qualidade, sem trocar a versão do Windows. Recomendado." Style="{StaticResource TSuave}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </Border>
+                                    <Border Style="{StaticResource LinhaAjuste}">
+                                        <CheckBox x:Name="BvWinget" Style="{StaticResource Interruptor}">
+                                            <StackPanel>
+                                                <TextBlock Text="Atualizar os seus programas" Style="{StaticResource TForte}"/>
+                                                <TextBlock Text="Navegadores, leitores de PDF, compactadores… pelo gerenciador oficial do Windows (winget)." Style="{StaticResource TSuave}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </Border>
+                                    <Border Style="{StaticResource LinhaAjuste}">
+                                        <CheckBox x:Name="BvDrivers" Style="{StaticResource Interruptor}">
+                                            <StackPanel>
+                                                <TextBlock Text="Drivers pelo Windows Update" Style="{StaticResource TForte}"/>
+                                                <TextBlock Text="Exceto os de vídeo. Desligado por padrão: em alguns PCs, o driver do fabricante é melhor." Style="{StaticResource TSuave}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </Border>
+                                    <Border Style="{StaticResource LinhaAjuste}" BorderThickness="0">
+                                        <CheckBox x:Name="BvAutoUpdate" Style="{StaticResource Interruptor}">
+                                            <StackPanel>
+                                                <TextBlock Text="Novas versões do Zelo" Style="{StaticResource TForte}"/>
+                                                <TextBlock Text="Só o pacote oficial do GitHub, conferido antes de instalar." Style="{StaticResource TSuave}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
                         <Grid Margin="0,28,0,0">

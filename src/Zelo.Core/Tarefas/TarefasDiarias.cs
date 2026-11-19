@@ -367,17 +367,67 @@ public sealed class BackupIncremental : Tarefa
 {
     public override string Id => "backup-incremental";
     public override string Nome => "Backup incremental";
-    public override string Descricao => "Copia para o destino de backup os arquivos novos ou alterados das pastas escolhidas (nada é apagado no destino).";
+    public override string Descricao => "Copia para o destino de backup os arquivos novos ou alterados das pastas escolhidas. Antes de substituir uma cópia, guarda a versão anterior (por 30 dias, por padrão). Nada que você apagar nas pastas originais é apagado do backup.";
     public override Categoria Categoria => Categoria.Backup;
     public override Rotina[] Rotinas => new[] { Rotina.Diaria };
     public override TimeSpan Limite => TimeSpan.FromHours(3);
 
     internal sealed class EstadoBackup { public DateTime? UltimoSucesso { get; set; } }
 
-    internal static string PastaEspelho(string destino, string origem)
+    internal static string NomeEspelho(string origem) => origem.TrimEnd('\\').Replace(":", "").Replace('\\', '_');
+
+    internal static string PastaEspelho(string destino, string origem) => Path.Combine(destino, "Zelo-Backup", NomeEspelho(origem));
+
+    /// <summary>Onde ficam as versões anteriores: Zelo-Backup\_versoes\aaaa-MM-dd_HHmm\&lt;pasta&gt;\...</summary>
+    public static string PastaVersoes(string destino) => Path.Combine(destino, "Zelo-Backup", "_versoes");
+
+    /// <summary>
+    /// Antes do robocopy substituir uma cópia, move a cópia atual para a pasta de versões do dia.
+    /// O robocopy (com /XO /FFT) só substitui quando o original é mais novo (tolerância de 2 s)
+    /// ou quando o tamanho mudou com a mesma data; a regra aqui é a mesma.
+    /// </summary>
+    internal static int GuardarVersoes(string origem, string espelho, string pastaDoDia, CancellationToken ct)
     {
-        var nome = origem.TrimEnd('\\').Replace(":", "").Replace('\\', '_');
-        return Path.Combine(destino, "Zelo-Backup", nome);
+        if (!Directory.Exists(espelho)) return 0;
+        int movidos = 0;
+        foreach (var original in Directory.EnumerateFiles(origem, "*", Varredura()))
+        {
+            ct.ThrowIfCancellationRequested();
+            var rel = Path.GetRelativePath(origem, original);
+            var copia = Path.Combine(espelho, rel);
+            try
+            {
+                if (!File.Exists(copia)) continue;
+                var fo = new FileInfo(original);
+                var fc = new FileInfo(copia);
+                var diferenca = (fo.LastWriteTimeUtc - fc.LastWriteTimeUtc).TotalSeconds;
+                bool vaiSubstituir = diferenca > 2 || (Math.Abs(diferenca) <= 2 && fo.Length != fc.Length);
+                if (!vaiSubstituir) continue;
+                var destinoVersao = Path.Combine(pastaDoDia, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(destinoVersao)!);
+                File.Move(copia, destinoVersao, overwrite: true);
+                movidos++;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return movidos;
+    }
+
+    /// <summary>Apaga as versões com mais de N dias (só dentro da pasta de versões do próprio Zelo).</summary>
+    internal static int LimparVersoes(string destino, int dias)
+    {
+        var raiz = PastaVersoes(destino);
+        if (dias <= 0 || !Directory.Exists(raiz)) return 0;
+        int apagadas = 0;
+        foreach (var pasta in Directory.EnumerateDirectories(raiz))
+        {
+            if (!DateTime.TryParseExact(Path.GetFileName(pasta), "yyyy-MM-dd_HHmm", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var quando)) continue;
+            if (quando >= DateTime.Now.AddDays(-dias)) continue;
+            try { Directory.Delete(pasta, true); apagadas++; } catch { }
+        }
+        return apagadas;
     }
 
     protected override async Task<ResultadoTarefa> ExecutarInternoAsync(Contexto ctx, CancellationToken ct)
@@ -392,13 +442,21 @@ public sealed class BackupIncremental : Tarefa
 
         var det = new List<string>();
         var falhas = 0;
+        var versoes = 0;
         var robocopy = Path.Combine(Environment.SystemDirectory, "robocopy.exe");
+        var pastaDoDia = Path.Combine(PastaVersoes(c.DestinoBackup), DateTime.Now.ToString("yyyy-MM-dd_HHmm"));
 
         foreach (var origem in c.PastasBackup)
         {
             ct.ThrowIfCancellationRequested();
             if (!Directory.Exists(origem)) { det.Add($"Pasta não encontrada: {origem}"); falhas++; continue; }
             var destino = PastaEspelho(c.DestinoBackup, origem);
+            if (!ctx.Simulacao && c.DiasVersoesBackup > 0)
+            {
+                try { versoes += GuardarVersoes(origem, destino, Path.Combine(pastaDoDia, NomeEspelho(origem)), ct); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { det.Add($"{origem}: não foi possível guardar as versões anteriores ({ex.Message})."); }
+            }
             // /E subpastas, /XO não sobrescreve mais novos, /XJ ignora junções, /FFT tolera discos FAT/exFAT/NAS.
             var args = $"\"{origem.TrimEnd('\\')}\" \"{destino}\" /E /XO /XJ /FFT /R:1 /W:1 /MT:8 /NP /NDL /NJH";
             if (ctx.Simulacao) args += " /L";
@@ -417,6 +475,13 @@ public sealed class BackupIncremental : Tarefa
 
         if (falhas == 0 && !ctx.Simulacao)
             Estado.Gravar("backup", new EstadoBackup { UltimoSucesso = DateTime.Now });
+        if (!ctx.Simulacao)
+        {
+            var apagadas = LimparVersoes(c.DestinoBackup, c.DiasVersoesBackup);
+            if (versoes > 0) det.Add($"{versoes} versão(ões) anterior(es) guardada(s) em {pastaDoDia}");
+            if (apagadas > 0) det.Add($"{apagadas} pasta(s) de versões com mais de {c.DiasVersoesBackup} dias apagada(s).");
+            if (c.DiasVersoesBackup > 0) det.Add($"Versões anteriores ficam por {c.DiasVersoesBackup} dias em {PastaVersoes(c.DestinoBackup)}");
+        }
 
         if (falhas > 0)
             return Res(StatusTarefa.Aviso, $"{falhas} de {c.PastasBackup.Count} pasta(s) com problema no backup.", det);

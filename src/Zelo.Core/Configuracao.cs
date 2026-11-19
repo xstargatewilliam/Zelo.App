@@ -17,6 +17,8 @@ public sealed class Configuracao
     /// <summary>Opcional: apaga da pasta Downloads o que estiver lá há mais de DiasDownloads.</summary>
     public bool LimparDownloads { get; set; } = false;
     public int DiasDownloads { get; set; } = 30;
+    /// <summary>Por quantos dias o backup guarda as versões anteriores dos arquivos alterados (0 = não guarda).</summary>
+    public int DiasVersoesBackup { get; set; } = 30;
 
     // Disco (% de uso)
     public int LimiteAvisoDisco { get; set; } = 85;
@@ -61,6 +63,7 @@ public sealed class Configuracao
         DiasTemporarios = Math.Clamp(DiasTemporarios, 1, 365);
         DiasLixeira = Math.Clamp(DiasLixeira, 1, 3650);
         DiasDownloads = Math.Clamp(DiasDownloads, 3, 3650);
+        DiasVersoesBackup = Math.Clamp(DiasVersoesBackup, 0, 3650);
         LimiteAvisoDisco = Math.Clamp(LimiteAvisoDisco, 50, 99);
         LimiteCriticoDisco = Math.Clamp(LimiteCriticoDisco, LimiteAvisoDisco, 100);
         HoraInicio = Math.Clamp(HoraInicio, 0, 23);

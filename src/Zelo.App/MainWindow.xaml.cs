@@ -963,6 +963,24 @@ public partial class MainWindow : Window
         AgendarSalvar();
     }
 
+    private void AbrirVersoes_Click(object sender, RoutedEventArgs e)
+    {
+        if (_config is null || string.IsNullOrWhiteSpace(_config.DestinoBackup))
+        {
+            Aviso("Escolha primeiro onde guardar o backup.");
+            return;
+        }
+        var pasta = Zelo.Core.Tarefas.BackupIncremental.PastaVersoes(_config.DestinoBackup);
+        if (!Directory.Exists(pasta))
+        {
+            Aviso("Ainda não há versões anteriores: elas aparecem depois que algum arquivo copiado mudar." +
+                  (Directory.Exists(System.IO.Path.GetPathRoot(_config.DestinoBackup) ?? "") ? "" : "\n\nO disco do backup parece desconectado."));
+            return;
+        }
+        try { Process.Start(new ProcessStartInfo("explorer.exe", $"\"{pasta}\"") { UseShellExecute = true }); }
+        catch (Exception ex) { Aviso("Não foi possível abrir a pasta: " + ex.Message); }
+    }
+
     private void EscolherDestino_Click(object sender, RoutedEventArgs e)
     {
         var d = new Microsoft.Win32.OpenFolderDialog { Title = "Onde guardar a cópia dos seus arquivos" };
@@ -998,6 +1016,14 @@ public partial class MainWindow : Window
         BvBarra2.Background = _passoBv >= 2 ? Cores.Luar : Cores.LinhaForte;
         BvBarra3.Background = _passoBv >= 3 ? Cores.Luar : Cores.LinhaForte;
         BvPassoTexto.Text = $"Passo {_passoBv} de 3";
+        if (_passoBv == 3)
+        {
+            // Mostra o que vale hoje; a pessoa confirma ou muda antes de começar.
+            BvWU.IsChecked = ChkWU.IsChecked;
+            BvWinget.IsChecked = ChkWinget.IsChecked;
+            BvDrivers.IsChecked = ChkDrivers.IsChecked;
+            BvAutoUpdate.IsChecked = ChkAutoUpdate.IsChecked;
+        }
         BvVoltar.Content = _passoBv == 1 ? "Fazer isso depois" : "Voltar";
         BvAvancar.Content = _passoBv switch
         {
@@ -1047,6 +1073,16 @@ public partial class MainWindow : Window
         }
         else if (_passoBv == 3)
         {
+            bool mudou = ChkWU.IsChecked != BvWU.IsChecked || ChkWinget.IsChecked != BvWinget.IsChecked
+                         || ChkDrivers.IsChecked != BvDrivers.IsChecked || ChkAutoUpdate.IsChecked != BvAutoUpdate.IsChecked;
+            if (mudou)
+            {
+                ChkWU.IsChecked = BvWU.IsChecked;
+                ChkWinget.IsChecked = BvWinget.IsChecked;
+                ChkDrivers.IsChecked = BvDrivers.IsChecked;
+                ChkAutoUpdate.IsChecked = BvAutoUpdate.IsChecked;
+                await SalvarConfigAsync();
+            }
             FecharBoasVindas();
             await ExecutarRotina(Rotina.Diaria, simulacao: true);
             return;
