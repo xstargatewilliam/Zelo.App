@@ -76,8 +76,47 @@ public static class Estado
     public static void Gravar<T>(string nome, T valor)
     {
         Directory.CreateDirectory(Caminhos.Estado);
-        File.WriteAllText(Path.Combine(Caminhos.Estado, nome + ".json"), Json.Serializar(valor, true));
+        // Grava num temporário e troca de uma vez: um desligamento no meio não deixa o arquivo pela metade.
+        var destino = Path.Combine(Caminhos.Estado, nome + ".json");
+        var temp = destino + ".tmp";
+        File.WriteAllText(temp, Json.Serializar(valor, true));
+        File.Move(temp, destino, overwrite: true);
     }
+}
+
+/// <summary>
+/// Uma operação pesada por vez: vistoria, otimização ou atualização do Zelo.
+/// Impede, por exemplo, que a atualização pare o serviço no meio de uma otimização.
+/// </summary>
+public static class Coordenador
+{
+    private static readonly object Trava = new();
+    private static string? _atual;
+
+    public static string? Atual { get { lock (Trava) return _atual; } }
+
+    public static bool Iniciar(string operacao)
+    {
+        lock (Trava)
+        {
+            if (_atual is not null) return false;
+            _atual = operacao;
+            return true;
+        }
+    }
+
+    public static void Encerrar(string operacao)
+    {
+        lock (Trava) if (_atual == operacao) _atual = null;
+    }
+
+    public static string Explicar() => Atual switch
+    {
+        "rotina" => "Espere a vistoria em andamento terminar.",
+        "otimizacao" => "O Zelo está aplicando ajustes de otimização. Espere terminar.",
+        "atualizacao" => "O Zelo está se atualizando. Tente de novo em alguns minutos.",
+        _ => "O Zelo está ocupado com outra tarefa. Tente de novo em alguns minutos.",
+    };
 }
 
 public sealed record SaidaProcesso(int Codigo, string Saida, string Erro)

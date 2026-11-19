@@ -74,11 +74,16 @@ public sealed class AndamentoOtimizacao
     public string? Resultado { get; set; }
     public List<string> Falhas { get; set; } = new();
     public bool? PontoCriado { get; set; }
+    /// <summary>O ponto de restauração falhou e nada foi alterado (a pessoa decide se continua).</summary>
+    public bool PontoFalhou { get; set; }
     public DateTime? Fim { get; set; }
 }
 
 public sealed class AplicacaoAjuste
 {
+    public string Id { get; set; } = "";
+    /// <summary>false enquanto o ajuste está sendo aplicado. Se o serviço cair nesse meio, ele é desfeito ao voltar.</summary>
+    public bool Concluido { get; set; }
     public DateTime Quando { get; set; }
     public string? Sid { get; set; }
     /// <summary>Como cada item estava antes. null = não existia.</summary>
@@ -87,7 +92,9 @@ public sealed class AplicacaoAjuste
 
 public sealed class RegistroOtimizacao
 {
+    public int Versao { get; set; } = 1;
     public List<PerfilUso> Perfis { get; set; } = new();
+    /// <summary>Chave: id do ajuste, ou id@SID para os que valem só para uma conta.</summary>
     public Dictionary<string, AplicacaoAjuste> Aplicados { get; set; } = new();
 }
 
@@ -496,12 +503,38 @@ public static class CatalogoOtimizacao
 public static class Otimizador
 {
     private const string NomeEstado = "otimizacao";
-    private static readonly SemaphoreSlim Trava = new(1, 1);
     private static readonly object TravaRegistro = new();
 
     public static AndamentoOtimizacao Andamento { get; private set; } = new();
+    public static bool Rodando => Andamento.Rodando;
 
-    public static RegistroOtimizacao Carregar() => Estado.Ler<RegistroOtimizacao>(NomeEstado) ?? new RegistroOtimizacao();
+    /// <summary>Ajustes que valem só para uma conta (registro HKCU ou apps da Loja).</summary>
+    public static bool PorUsuario(Ajuste a) =>
+        a.Tipo == TipoAjuste.App || a.Valores.Any(v => v.Caminho.StartsWith("HKCU", StringComparison.OrdinalIgnoreCase));
+
+    public static string Chave(Ajuste a, string? sid) => PorUsuario(a) ? $"{a.Id}@{sid}" : a.Id;
+
+    public static RegistroOtimizacao Carregar()
+    {
+        var r = Estado.Ler<RegistroOtimizacao>(NomeEstado) ?? new RegistroOtimizacao { Versao = 2 };
+        if (r.Versao < 2)
+        {
+            // Versão 1 guardava tudo pelo id; os ajustes por conta passam a levar o SID na chave.
+            var novos = new Dictionary<string, AplicacaoAjuste>();
+            foreach (var (id, ap) in r.Aplicados)
+            {
+                var def = CatalogoOtimizacao.Por(id);
+                ap.Id = id;
+                ap.Concluido = true;
+                if (def is null) continue;
+                novos[Chave(def, ap.Sid)] = ap;
+            }
+            r.Aplicados = novos;
+            r.Versao = 2;
+        }
+        return r;
+    }
+
     private static void Salvar(RegistroOtimizacao r) { lock (TravaRegistro) Estado.Gravar(NomeEstado, r); }
 
     // ------------------------------------------------------------------ leitura
@@ -509,14 +542,15 @@ public static class Otimizador
     public static async Task<List<EstadoAjuste>> ListarAsync(string? sid, CancellationToken ct)
     {
         var reg = Carregar();
-        var apps = await AppsInstaladosAsync(ct);
+        var apps = await AppsInstaladosAsync(sid, ct);
         var lista = new List<EstadoAjuste>();
         foreach (var a in CatalogoOtimizacao.Todos.Where(a => a.Tipo != TipoAjuste.Programa))
         {
             SituacaoAjuste s;
             try { s = await LerAsync(a, sid, apps, ct); }
             catch { s = SituacaoAjuste.Indisponivel; }
-            reg.Aplicados.TryGetValue(a.Id, out var ap);
+            reg.Aplicados.TryGetValue(Chave(a, sid), out var ap);
+            if (ap is { Concluido: false }) ap = null;
             // App removido pelo Zelo: não está mais instalado, mas continua na lista para poder reinstalar.
             if (a.Tipo == TipoAjuste.App && s == SituacaoAjuste.Indisponivel && ap is not null) s = SituacaoAjuste.Ativo;
             lista.Add(new EstadoAjuste { Id = a.Id, Situacao = s, PeloZelo = ap is not null, Quando = ap?.Quando });
@@ -529,8 +563,7 @@ public static class Otimizador
         switch (a.Tipo)
         {
             case TipoAjuste.Registro:
-                if (a.Valores.Any(v => v.Caminho.StartsWith("HKCU", StringComparison.OrdinalIgnoreCase)) && sid is null)
-                    return SituacaoAjuste.Indisponivel;
+                if (PorUsuario(a) && !SidValido(sid)) return SituacaoAjuste.Indisponivel;
                 return a.Valores.All(v => Igual(LerValor(v, sid), v.Valor)) ? SituacaoAjuste.Ativo : SituacaoAjuste.Padrao;
 
             case TipoAjuste.Servico:
@@ -551,12 +584,14 @@ public static class Otimizador
         return SituacaoAjuste.Indisponivel;
     }
 
-    private static async Task<HashSet<string>?> AppsInstaladosAsync(CancellationToken ct)
+    /// <summary>Apps da Loja instalados para a conta de quem usa o painel (não para as outras contas).</summary>
+    private static async Task<HashSet<string>?> AppsInstaladosAsync(string? sid, CancellationToken ct)
     {
+        if (!SidValido(sid)) return null;
         try
         {
             var json = await Executor.PowerShellJsonAsync(
-                "ConvertTo-Json -Compress -InputObject @(Get-AppxPackage -AllUsers | Select-Object -ExpandProperty Name | Sort-Object -Unique)", ct);
+                $"ConvertTo-Json -Compress -InputObject @(Get-AppxPackage -User '{sid}' | Select-Object -ExpandProperty Name | Sort-Object -Unique)", ct);
             return new HashSet<string>(json.Itens().Select(e => e.GetString() ?? ""), StringComparer.OrdinalIgnoreCase);
         }
         catch (Exception ex)
@@ -568,17 +603,18 @@ public static class Otimizador
 
     // ------------------------------------------------------------------ aplicar e desfazer
 
-    public static string? Iniciar(List<string> ids, List<PerfilUso> perfis, string? sid, bool desfazer, CancellationToken ct)
+    public static string? Iniciar(List<string> ids, List<PerfilUso> perfis, string? sid, bool desfazer, bool semPonto, CancellationToken ct)
     {
         var ajustes = ids.Distinct().Select(CatalogoOtimizacao.Por).Where(a => a is not null && a.Tipo != TipoAjuste.Programa).Select(a => a!).ToList();
-        if (!Trava.Wait(0)) return "O Zelo já está aplicando ajustes. Espere terminar.";
+        if (ajustes.Any(PorUsuario) && !SidValido(sid)) return "Não foi possível identificar a sua conta do Windows.";
+        if (!Coordenador.Iniciar("otimizacao")) return Coordenador.Explicar();
         Andamento = new AndamentoOtimizacao { Rodando = true, Desfazendo = desfazer, Total = ajustes.Count, Etapa = "Começando" };
         _ = Task.Run(async () =>
         {
             try
             {
-                if (desfazer) await DesfazerAsync(ajustes, ct);
-                else await AplicarAsync(ajustes, perfis, sid, ct);
+                if (desfazer) await DesfazerAsync(ajustes, sid, ct);
+                else await AplicarAsync(ajustes, perfis, sid, semPonto, ct);
             }
             catch (Exception ex)
             {
@@ -590,13 +626,13 @@ public static class Otimizador
                 Andamento.Rodando = false;
                 Andamento.Fim = DateTime.Now;
                 Andamento.Etapa = "";
-                Trava.Release();
+                Coordenador.Encerrar("otimizacao");
             }
         });
         return null;
     }
 
-    private static async Task AplicarAsync(List<Ajuste> ajustes, List<PerfilUso> perfis, string? sid, CancellationToken ct)
+    private static async Task AplicarAsync(List<Ajuste> ajustes, List<PerfilUso> perfis, string? sid, bool semPonto, CancellationToken ct)
     {
         var reg = Carregar();
         reg.Perfis = perfis;
@@ -606,24 +642,56 @@ public static class Otimizador
         {
             Andamento.Etapa = "Criando um ponto de restauração";
             Andamento.PontoCriado = await CriarPontoAsync(ct);
+            if (Andamento.PontoCriado == false && !semPonto)
+            {
+                Andamento.PontoFalhou = true;
+                Andamento.Resultado = "Não foi possível criar o ponto de restauração. Nada foi alterado.";
+                Registro.Escrever("Otimizar: cancelado porque o ponto de restauração falhou.");
+                return;
+            }
         }
 
         int ok = 0;
-        var apps = await AppsInstaladosAsync(ct);
+        var apps = await AppsInstaladosAsync(sid, ct);
         foreach (var a in ajustes)
         {
             ct.ThrowIfCancellationRequested();
             Andamento.Etapa = a.Nome;
+            var chave = Chave(a, sid);
             try
             {
                 var situacao = await LerAsync(a, sid, apps, ct);
                 if (situacao == SituacaoAjuste.Ativo) { ok++; continue; }
                 if (situacao == SituacaoAjuste.Indisponivel) throw new InvalidOperationException("não se aplica a este PC.");
 
-                var anterior = await AplicarUmAsync(a, sid, ct);
-                // Se o Zelo já tinha aplicado antes, o "como estava" original continua valendo.
-                if (!reg.Aplicados.ContainsKey(a.Id))
-                    reg.Aplicados[a.Id] = new AplicacaoAjuste { Quando = DateTime.Now, Sid = sid, Anterior = anterior };
+                // Diário: primeiro anota como estava, depois muda, confere e só então marca como concluído.
+                bool novo = !reg.Aplicados.ContainsKey(chave);
+                if (novo)
+                {
+                    reg.Aplicados[chave] = new AplicacaoAjuste { Id = a.Id, Quando = DateTime.Now, Sid = sid, Anterior = LerAnterior(a, sid) };
+                    if (a.Tipo == TipoAjuste.Script)
+                        reg.Aplicados[chave].Anterior["script"] = UltimaLinha((await Executor.PowerShellAsync(a.ScriptLer!, ct)).Saida);
+                    Salvar(reg);
+                }
+                try
+                {
+                    await AplicarUmAsync(a, sid, ct);
+                    var depois = await LerAsync(a, sid, a.Tipo == TipoAjuste.App ? await AppsInstaladosAsync(sid, ct) : apps, ct);
+                    bool conferido = a.Tipo == TipoAjuste.App ? depois == SituacaoAjuste.Indisponivel : depois == SituacaoAjuste.Ativo;
+                    if (!conferido) throw new InvalidOperationException("o Windows não aceitou a mudança.");
+                }
+                catch
+                {
+                    // Volta este item ao que era antes de seguir para o próximo.
+                    if (novo)
+                    {
+                        try { await DesfazerUmAsync(a, reg.Aplicados[chave], ct); } catch { }
+                        reg.Aplicados.Remove(chave);
+                        Salvar(reg);
+                    }
+                    throw;
+                }
+                reg.Aplicados[chave].Concluido = true;
                 Salvar(reg);
                 ok++;
             }
@@ -635,22 +703,23 @@ public static class Otimizador
         }
         Andamento.Resultado = ajustes.Count == 0 ? "Nada a mudar no Windows."
             : $"{ok} de {ajustes.Count} ajuste(s) aplicado(s)."
-              + (Andamento.PontoCriado == false ? " Não foi possível criar o ponto de restauração; cada ajuste ainda pode ser desfeito pelo Zelo." : "");
+              + (Andamento.PontoCriado == false ? " Sem ponto de restauração (você escolheu continuar); cada ajuste ainda pode ser desfeito pelo Zelo." : "");
         Registro.Escrever($"Otimizar: {Andamento.Resultado} Perfis: {string.Join(", ", perfis)}. Falhas: {Andamento.Falhas.Count}.");
     }
 
-    private static async Task DesfazerAsync(List<Ajuste> ajustes, CancellationToken ct)
+    private static async Task DesfazerAsync(List<Ajuste> ajustes, string? sid, CancellationToken ct)
     {
         var reg = Carregar();
         int ok = 0;
         foreach (var a in ajustes)
         {
             Andamento.Etapa = a.Nome;
-            if (!reg.Aplicados.TryGetValue(a.Id, out var ap)) { Andamento.Feitos++; continue; }
+            var chave = Chave(a, sid);
+            if (!reg.Aplicados.TryGetValue(chave, out var ap)) { Andamento.Feitos++; continue; }
             try
             {
                 await DesfazerUmAsync(a, ap, ct);
-                reg.Aplicados.Remove(a.Id);
+                reg.Aplicados.Remove(chave);
                 Salvar(reg);
                 ok++;
             }
@@ -664,22 +733,48 @@ public static class Otimizador
         Registro.Escrever($"Otimizar: {Andamento.Resultado} Falhas: {Andamento.Falhas.Count}.");
     }
 
-    private static async Task<Dictionary<string, string?>> AplicarUmAsync(Ajuste a, string? sid, CancellationToken ct)
+    /// <summary>
+    /// Ao iniciar o serviço: um ajuste que ficou "aplicando" (o PC desligou ou o serviço caiu no meio)
+    /// volta ao que era antes, para nunca ficar uma mudança sem registro de como desfazer.
+    /// </summary>
+    public static async Task RecuperarAsync(CancellationToken ct)
+    {
+        var reg = Carregar();
+        var pendentes = reg.Aplicados.Where(kv => !kv.Value.Concluido).ToList();
+        foreach (var (chave, ap) in pendentes)
+        {
+            var a = CatalogoOtimizacao.Por(ap.Id);
+            try { if (a is not null) await DesfazerUmAsync(a, ap, ct); }
+            catch (Exception ex) { Registro.Escrever($"Otimizar: não foi possível desfazer {ap.Id} interrompido: {ex.Message}"); }
+            reg.Aplicados.Remove(chave);
+            Registro.Escrever($"Otimizar: ajuste {ap.Id} tinha ficado pela metade e foi desfeito.");
+        }
+        if (pendentes.Count > 0) Salvar(reg);
+    }
+
+    private static Dictionary<string, string?> LerAnterior(Ajuste a, string? sid)
     {
         var anterior = new Dictionary<string, string?>();
+        if (a.Tipo == TipoAjuste.Registro)
+            foreach (var v in a.Valores) anterior[$"{v.Caminho}|{v.Nome}"] = LerBruto(v.Caminho, v.Nome, sid);
+        else if (a.Tipo == TipoAjuste.Servico)
+            foreach (var s in a.Servicos)
+                if (InicioDoServico(s) is { } i) anterior[s] = i.ToString();
+        return anterior;
+    }
+
+    private static async Task AplicarUmAsync(Ajuste a, string? sid, CancellationToken ct)
+    {
         switch (a.Tipo)
         {
             case TipoAjuste.Registro:
-                foreach (var v in a.Valores) anterior[$"{v.Caminho}|{v.Nome}"] = LerBruto(v.Caminho, v.Nome, sid);
                 foreach (var v in a.Valores) Escrever(v.Caminho, v.Nome, v.Valor, sid);
                 break;
 
             case TipoAjuste.Servico:
                 foreach (var s in a.Servicos)
                 {
-                    var i = InicioDoServico(s);
-                    if (i is null) continue;
-                    anterior[s] = i.Value.ToString();
+                    if (InicioDoServico(s) is null) continue;
                     Escrever($@"HKLM\SYSTEM\CurrentControlSet\Services\{s}", "Start", a.InicioServico, null);
                     if (a.InicioServico == 4)
                         await Executor.PowerShellAsync($"Stop-Service -Name '{s}' -Force -ErrorAction SilentlyContinue", ct);
@@ -687,12 +782,11 @@ public static class Otimizador
                 break;
 
             case TipoAjuste.App:
+                // Só da conta de quem pediu. As outras contas do PC e as contas futuras não são afetadas.
                 var lista = string.Join(",", a.Pacotes.Select(p => $"'{p}'"));
                 var r = await Executor.PowerShellAsync($$"""
                     foreach ($p in @({{lista}})) {
-                      Get-AppxPackage -AllUsers -Name $p | ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue }
-                      Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $p } |
-                        ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -AllUsers -ErrorAction SilentlyContinue | Out-Null }
+                      Get-AppxPackage -User '{{sid}}' -Name $p | ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -User '{{sid}}' }
                     }
                     'OK'
                     """, ct);
@@ -700,13 +794,10 @@ public static class Otimizador
                 break;
 
             case TipoAjuste.Script:
-                var ler = await Executor.PowerShellAsync(a.ScriptLer!, ct);
-                anterior["script"] = UltimaLinha(ler.Saida);
                 var ap = await Executor.PowerShellAsync(a.ScriptAplicar!, ct);
                 if (ap.Codigo != 0) throw new InvalidOperationException(string.Join(" ", ap.Linhas(2)));
                 break;
         }
-        return anterior;
     }
 
     private static async Task DesfazerUmAsync(Ajuste a, AplicacaoAjuste ap, CancellationToken ct)
@@ -732,7 +823,7 @@ public static class Otimizador
                 break;
 
             case TipoAjuste.App:
-                // Reinstalar é pela Microsoft Store, no painel (precisa da conta da pessoa).
+                // Não dá para reinstalar daqui: a Loja precisa da conta da pessoa. O painel abre a página.
                 break;
 
             case TipoAjuste.Script:
@@ -769,6 +860,8 @@ public static class Otimizador
 
     // ------------------------------------------------------------------ registro do Windows
 
+    public static bool SidValido(string? sid) => sid is not null && Regex.IsMatch(sid, @"^S-1-5-21-[\d-]+$");
+
     private static (RegistryKey raiz, string sub)? Separar(string caminho, string? sid)
     {
         if (caminho.StartsWith(@"HKLM\", StringComparison.OrdinalIgnoreCase))
@@ -776,7 +869,7 @@ public static class Otimizador
         if (caminho.StartsWith(@"HKCU\", StringComparison.OrdinalIgnoreCase))
         {
             // O serviço é SYSTEM: o "HKCU" de quem está no painel fica em HKEY_USERS\<SID>.
-            if (sid is null || !Regex.IsMatch(sid, @"^S-1-5-21-[\d-]+$")) return null;
+            if (!SidValido(sid)) return null;
             return (RegistryKey.OpenBaseKey(RegistryHive.Users, RegistryView.Registry64), sid + "\\" + caminho[5..]);
         }
         throw new ArgumentException("Caminho de registro inválido: " + caminho);

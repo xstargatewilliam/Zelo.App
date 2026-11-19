@@ -178,7 +178,7 @@ public sealed class ItemVerificacao
     public Visibility VisAcoes => Acoes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility VisDetalhes => Detalhes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-    public static ItemVerificacao De(Tarefa t, ResultadoTarefa? r, bool desligada)
+    public static ItemVerificacao De(Tarefa t, ResultadoTarefa? r, bool desligada, bool silenciado = false)
     {
         var nomeRotina = Palavras.Rotina(t.Rotinas[0]).ToLowerInvariant();
         var onde = (t.Rotinas[0] == Rotina.Mensal ? "no " : "na ") + nomeRotina;
@@ -191,11 +191,14 @@ public sealed class ItemVerificacao
         var acoes = ItemPonto.AcoesPara(ponto);
         if (r.Status is StatusTarefa.Ok or StatusTarefa.Ignorada)
             acoes = acoes.Where(a => !a.Id.StartsWith("dispensar:") && !a.Id.StartsWith("tarefa:")).ToList();
+        else if (silenciado)
+            acoes = acoes.Where(a => a.Id != $"dispensar:{t.Id}|").ToList();
         return new ItemVerificacao
         {
             Nome = t.Nome,
             StatusTexto = Palavras.Status(r.Status),
-            Resumo = string.IsNullOrWhiteSpace(r.Resumo) ? "Sem observações." : r.Resumo,
+            Resumo = (string.IsNullOrWhiteSpace(r.Resumo) ? "Sem observações." : r.Resumo)
+                     + (silenciado ? " (Aviso silenciado: continua contando na nota até uma nova verificação.)" : ""),
             Quando = $"{Palavras.Quando(r.Fim)} · {onde}",
             Cor = Cores.De(r.Status), CorFundo = Cores.FundoDe(r.Status), Icone = Icones.De(r.Status),
             Acoes = acoes,
@@ -278,7 +281,7 @@ public sealed class ItemPonto : INotifyPropertyChanged
                 break;
             case "eventos-criticos":
                 A("Ver no Visualizador de Eventos", "cmd:eventvwr.msc|");
-                A("Dispensar", $"dispensar:{p.TarefaId}|");
+                A("Silenciar aviso", $"dispensar:{p.TarefaId}|");
                 break;
             case "espaco-disco" or "maiores-arquivos":
                 A("Ver o que ocupa espaço", "abrir:ms-settings:storagesense");
@@ -303,7 +306,7 @@ public sealed class ItemPonto : INotifyPropertyChanged
                 break;
         }
         if (p.Status is StatusTarefa.Aviso && r.All(x => !x.Id.StartsWith("dispensar:")) && p.TarefaId is not ("backup-incremental" or "espaco-disco"))
-            A("Dispensar", $"dispensar:{p.TarefaId}|");
+            A("Silenciar aviso", $"dispensar:{p.TarefaId}|");
         return r;
     }
 }

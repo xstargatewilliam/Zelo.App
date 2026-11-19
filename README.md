@@ -40,7 +40,7 @@ Uma vez por dia o serviço consulta a página **Releases** deste repositório. Q
 3. para o serviço, troca os arquivos, guarda uma cópia da versão anterior e volta a ela se a cópia falhar;
 4. reinicia o serviço e reabre o painel na bandeja.
 
-Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo** em Ajustes → Atualizações; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização** (Ajustes → Sobre) instala na hora. Só administradores podem atualizar.
+Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo** em Ajustes → Atualizações; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização** (Ajustes → Sobre) instala na hora. Qualquer pessoa do PC pode pedir a atualização: o Zelo só instala o pacote oficial publicado aqui, conferido pelo SHA-256.
 
 **Para quem mantém o projeto:** suba o número em `<Version>` no `Directory.Build.props` e envie para o GitHub. O GitHub Actions compila e publica a versão em Releases sozinho.
 
@@ -49,7 +49,7 @@ Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo*
 | Rotina | Tarefas |
 |---|---|
 | **Vistoria diária** | Atualização do antivírus + verificação rápida · saúde dos discos (SMART: desgaste, temperatura, erros) · espaço livre · erros graves no Visualizador de Eventos (telas azuis, desligamentos inesperados, falhas de disco) · reinicialização pendente · limpeza de temporários antigos · limpeza da pasta Downloads (opcional, só arquivos antigos) · backup incremental |
-| **Revisão semanal** | Ponto de restauração · Windows Update (sem upgrades de versão) · drivers pelo Windows Update (opcional, sem os de vídeo) · placa de vídeo: idade do driver e software do fabricante para atualizar · atualização de programas (winget) · TRIM nos SSDs / desfragmentação só em HDs · Lixeira antiga e cache de navegadores (Chrome, Edge, Firefox, Opera/Opera GX — opcional) · programas novos na inicialização |
+| **Revisão semanal** | Ponto de restauração · Windows Update (sem upgrades de versão) · drivers pelo Windows Update (opcional, sem os de vídeo) · placa de vídeo: idade do driver e software do fabricante para atualizar · atualização de programas (winget) · TRIM nos SSDs / desfragmentação só em HDs · Lixeira antiga (desligado por padrão) e cache de navegadores (Chrome, Edge, Firefox, Opera/Opera GX — opcional) · programas novos na inicialização |
 | **Check-up mensal** | DISM + SFC · limpeza segura do WinSxS · verificação do sistema de arquivos (sem reiniciar) · auditoria de segurança (firewall, UAC, BitLocker, SMBv1, administradores novos) · verificação completa do antivírus · **teste do backup** (compara arquivos por SHA-256) · saúde da bateria · maiores arquivos · drivers muito antigos |
 
 ### Quando as rotinas rodam
@@ -125,7 +125,11 @@ O resto acontece sozinho:
 ### Segurança
 
 - O serviço roda como SYSTEM; o painel roda como o usuário, sem elevação, e conversa com o serviço por um canal local (named pipe) que recusa conexões pela rede.
-- Qualquer usuário do PC pode ver o painel e disparar rotinas, mas **só administradores podem alterar as configurações** (elas decidem o que o serviço apaga e copia). Contas de administrador com UAC funcionam normalmente, sem precisar abrir o painel como administrador.
+- **Livre para qualquer pessoa do PC**: ver o painel, rodar e parar vistorias, pausar, silenciar avisos, atualizar o Zelo e mudar horários, perfil, limpeza comum e avisos de disco.
+- **Pede a confirmação de administrador do Windows a cada vez** (o aviso do UAC): otimizar ou desfazer ajustes, mudar as pastas do backup, ligar a limpeza de Downloads, ligar ou desligar instalações automáticas, desligar verificações de segurança e confirmar alertas de segurança (como "esses administradores são meus"). Uma conta de administrador com o painel comum não basta: o Windows sempre pergunta.
+- **Silenciar não é resolver**: um aviso silenciado sai da lista, mas continua contando na nota até uma nova verificação não encontrar mais o problema. Já quando você explica o que aconteceu ("foi queda de energia"), o achado conta como resolvido até a próxima verificação.
+- **Otimizar é transacional**: o Zelo anota como cada item estava antes de mudar, confere se a mudança pegou e, se o PC desligar no meio, desfaz o item incompleto quando o serviço volta. Se o ponto de restauração falhar, ele para e pergunta. Apps da Loja são removidos só da sua conta e voltam pela Microsoft Store (não pelo botão Desfazer).
+- Uma operação pesada por vez: vistoria, otimização e atualização do Zelo nunca rodam juntas.
 
 ### Limitações conhecidas
 

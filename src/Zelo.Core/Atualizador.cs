@@ -114,12 +114,26 @@ public static class Atualizador
             GravarEstado(estado);
             if (!instalar) return $"Nova versão disponível: {remota.Versao.ToString(3)} (você tem a {atual.ToString(3)}).";
 
-            Registro.Escrever($"Baixando a versão {remota.Versao.ToString(3)} de {remota.UrlPacote}");
-            var pasta = await PrepararAsync(remota, ct);
-            estado.UltimaInstalacao = DateTime.Now;
-            estado.VersaoInstalada = remota.Versao.ToString(3);
-            GravarEstado(estado);
-            Aplicar(pasta, remota.Versao.ToString(3));
+            // A instalação para o serviço: não pode acontecer no meio de uma vistoria ou otimização.
+            if (!Coordenador.Iniciar("atualizacao"))
+                return $"Nova versão {remota.Versao.ToString(3)} disponível; a instalação fica para depois. {Coordenador.Explicar()}";
+            try
+            {
+                Registro.Escrever($"Baixando a versão {remota.Versao.ToString(3)} de {remota.UrlPacote}");
+                var pasta = await PrepararAsync(remota, ct);
+                estado.UltimaInstalacao = DateTime.Now;
+                estado.VersaoInstalada = remota.Versao.ToString(3);
+                GravarEstado(estado);
+                Aplicar(pasta, remota.Versao.ToString(3));
+            }
+            catch
+            {
+                Coordenador.Encerrar("atualizacao");
+                throw;
+            }
+            // O script de aplicação para e reinicia o serviço. Se por algum motivo isso não acontecer,
+            // libera as outras operações depois de 10 minutos.
+            _ = Task.Delay(TimeSpan.FromMinutes(10)).ContinueWith(_ => Coordenador.Encerrar("atualizacao"));
             return $"Instalando a versão {remota.Versao.ToString(3)}. O Zelo reinicia sozinho em alguns segundos.";
         }
         catch (OperationCanceledException) { throw; }

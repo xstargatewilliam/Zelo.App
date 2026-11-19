@@ -12,7 +12,7 @@ public sealed class Configuracao
     // Limpeza
     public int DiasTemporarios { get; set; } = 7;
     public int DiasLixeira { get; set; } = 30;
-    public bool EsvaziarLixeira { get; set; } = true;
+    public bool EsvaziarLixeira { get; set; } = false;
     public bool LimparCacheNavegadores { get; set; } = false;
     /// <summary>Opcional: apaga da pasta Downloads o que estiver lá há mais de DiasDownloads.</summary>
     public bool LimparDownloads { get; set; } = false;

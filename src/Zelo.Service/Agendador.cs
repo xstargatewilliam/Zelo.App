@@ -45,7 +45,7 @@ public sealed class Agendador : BackgroundService
 
     private async Task VerificarAsync(CancellationToken parar)
     {
-        if (_motor.Ocupado || Atualizador.EmAndamento) return;
+        if (_motor.Ocupado || Atualizador.EmAndamento || Coordenador.Atual is not null) return;
 
         var cfg = ArmazemConfig.Carregar();
 

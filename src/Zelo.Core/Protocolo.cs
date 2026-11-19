@@ -21,6 +21,10 @@ public sealed class Pedido
     /// <summary>Comandos "otimizar-aplicar" e "otimizar-desfazer".</summary>
     public List<string>? Ids { get; set; }
     public List<PerfilUso>? PerfisUso { get; set; }
+    /// <summary>Quem está usando o painel (para os ajustes que valem só para essa conta).</summary>
+    public string? SidUsuario { get; set; }
+    /// <summary>A pessoa aceitou otimizar mesmo sem ponto de restauração.</summary>
+    public bool SemPontoRestauracao { get; set; }
 }
 
 public sealed class Resposta
@@ -30,6 +34,8 @@ public sealed class Resposta
     public EstadoServico? Estado { get; set; }
     public Configuracao? Config { get; set; }
     public List<ExecucaoRotina>? Historico { get; set; }
+    /// <summary>A ação precisa da confirmação de administrador do Windows (UAC).</summary>
+    public bool PrecisaElevar { get; set; }
     public List<EstadoAjuste>? Ajustes { get; set; }
     public AndamentoOtimizacao? Otimizacao { get; set; }
     public List<PerfilUso>? PerfisUso { get; set; }

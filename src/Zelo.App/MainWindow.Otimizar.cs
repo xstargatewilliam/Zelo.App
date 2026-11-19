@@ -227,9 +227,10 @@ public partial class MainWindow
         if (sistema.Count > 0)
         {
             texto.AppendLine($"O Zelo vai aplicar {sistema.Count} ajuste(s) no Windows.");
-            texto.AppendLine("Antes, ele cria um ponto de restauração (se a Restauração do Sistema estiver desligada, ele a liga no disco C:).");
+            texto.AppendLine("Antes, ele cria um ponto de restauração (se a Restauração do Sistema estiver desligada, ele a liga no disco C:). Se não conseguir, ele para e pergunta.");
+            texto.AppendLine("O Windows vai pedir a sua confirmação de administrador.");
             int apps = sistema.Count(a => a.Def.Tipo == TipoAjuste.App);
-            if (apps > 0) texto.AppendLine($"{apps} item(ns) removem apps; eles voltam pela Microsoft Store quando você quiser.");
+            if (apps > 0) texto.AppendLine($"{apps} item(ns) removem apps só da sua conta. Eles não voltam com \"Desfazer\": para tê-los de novo, reinstale pela Microsoft Store (o Zelo abre a página).");
         }
         if (programas.Count > 0)
             texto.AppendLine($"Depois, instala: {string.Join(", ", programas.Select(p => p.Nome))}. O Windows pode pedir confirmação para alguns.");
@@ -243,12 +244,13 @@ public partial class MainWindow
         var resumo = new List<string>();
         try
         {
-            var r = await ClientePipe.EnviarAsync(new Pedido
+            var pedido = new Pedido
             {
                 Comando = "otimizar-aplicar",
                 Ids = sistema.Select(a => a.Id).ToList(),
                 PerfisUso = _perfisUso.ToList(),
-            });
+            };
+            var r = await Elevacao.EnviarAsync(pedido);
             if (!r.Ok)
             {
                 Aviso(r.Mensagem ?? "Não deu certo.");
@@ -257,6 +259,19 @@ public partial class MainWindow
             if (sistema.Count > 0)
             {
                 var fim = await AcompanharAsync();
+                if (fim is { PontoFalhou: true })
+                {
+                    // Sem ponto de restauração, nada foi mudado: a pessoa decide.
+                    var continuar = MessageBox.Show(this,
+                        "O Windows não deixou criar o ponto de restauração, então o Zelo não mudou nada.\n\n" +
+                        "Cada ajuste ainda pode ser desfeito pelo próprio Zelo, mas sem o ponto de restauração não há como voltar o PC inteiro de uma vez.\n\n" +
+                        "Continuar mesmo assim?", "Zelo · Otimizar", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+                    if (!continuar) { TxtOtimProgresso.Text = "Nada foi alterado."; return; }
+                    pedido.SemPontoRestauracao = true;
+                    r = await Elevacao.EnviarAsync(pedido);
+                    if (!r.Ok) { Aviso(r.Mensagem ?? "Não deu certo."); return; }
+                    fim = await AcompanharAsync();
+                }
                 if (fim is not null)
                 {
                     if (fim.Resultado is not null) resumo.Add(fim.Resultado);
@@ -346,7 +361,7 @@ public partial class MainWindow
         AtualizarContagemOtim();
         try
         {
-            var r = await ClientePipe.EnviarAsync(new Pedido { Comando = "otimizar-desfazer", Ids = ids });
+            var r = await Elevacao.EnviarAsync(new Pedido { Comando = "otimizar-desfazer", Ids = ids });
             if (!r.Ok) { Aviso(r.Mensagem ?? "Não deu certo."); return; }
             var fim = await AcompanharAsync();
             if (fim is { Falhas.Count: > 0 }) Aviso("Não deu certo:\n• " + string.Join("\n• ", fim.Falhas));
@@ -377,9 +392,11 @@ public partial class MainWindow
     {
         try
         {
-            foreach (var p in Process.GetProcessesByName("explorer")) { try { p.Kill(); } catch { } }
+            // Só o Explorador desta sessão (não mexe em outras contas conectadas no PC).
+            var sessao = Process.GetCurrentProcess().SessionId;
+            foreach (var p in Process.GetProcessesByName("explorer").Where(p => p.SessionId == sessao)) { try { p.Kill(); } catch { } }
             await Task.Delay(2500);
-            if (Process.GetProcessesByName("explorer").Length == 0)
+            if (!Process.GetProcessesByName("explorer").Any(p => p.SessionId == sessao))
                 Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
         }
         catch { }
