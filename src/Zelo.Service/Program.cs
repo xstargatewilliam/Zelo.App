@@ -24,6 +24,17 @@ if (args.Length >= 2 && args[0] == "--rodar")
     return;
 }
 
+// Usado pelo desinstalador (como administrador): desfaz os ajustes da aba Otimizar.
+if (args.Length >= 1 && args[0] == "--desfazer-otimizacao")
+{
+    Caminhos.Garantir();
+    await Otimizador.RecuperarAsync(CancellationToken.None);
+    var (desfeitos, pendentes) = await Otimizador.DesfazerTudoAsync(CancellationToken.None);
+    Console.WriteLine($"{desfeitos} ajuste(s) voltaram a como eram antes.");
+    foreach (var p in pendentes) Console.WriteLine(" - " + p);
+    return;
+}
+
 // O serviço trabalha com prioridade baixa: o que a pessoa está usando vem primeiro.
 try { System.Diagnostics.Process.GetCurrentProcess().PriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal; } catch { }
 

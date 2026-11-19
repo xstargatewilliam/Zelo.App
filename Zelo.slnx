@@ -4,4 +4,7 @@
     <Project Path="src/Zelo.Service/Zelo.Service.csproj" />
     <Project Path="src/Zelo.App/Zelo.App.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Zelo.Tests/Zelo.Tests.csproj" />
+  </Folder>
 </Solution>

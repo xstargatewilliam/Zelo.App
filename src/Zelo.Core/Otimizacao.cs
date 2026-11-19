@@ -734,6 +734,38 @@ public static class Otimizador
     }
 
     /// <summary>
+    /// Desfaz tudo que o Zelo aplicou, de todas as contas (usado pelo desinstalador).
+    /// Devolve o que não pôde ser desfeito automaticamente, como apps removidos da Loja.
+    /// </summary>
+    public static async Task<(int desfeitos, List<string> pendentes)> DesfazerTudoAsync(CancellationToken ct)
+    {
+        var reg = Carregar();
+        int ok = 0;
+        var pendentes = new List<string>();
+        foreach (var (chave, ap) in reg.Aplicados.ToList())
+        {
+            var a = CatalogoOtimizacao.Por(ap.Id);
+            if (a is null) { reg.Aplicados.Remove(chave); continue; }
+            if (a.Tipo == TipoAjuste.App)
+            {
+                pendentes.Add($"{a.Nome}: reinstale pela Microsoft Store, se quiser de volta.");
+                reg.Aplicados.Remove(chave);
+                continue;
+            }
+            try
+            {
+                await DesfazerUmAsync(a, ap, ct);
+                reg.Aplicados.Remove(chave);
+                ok++;
+            }
+            catch (Exception ex) { pendentes.Add($"{a.Nome}: não deu certo ({ex.Message})."); }
+        }
+        Salvar(reg);
+        Registro.Escrever($"Otimizar: desinstalação desfez {ok} ajuste(s); {pendentes.Count} pendente(s).");
+        return (ok, pendentes);
+    }
+
+    /// <summary>
     /// Ao iniciar o serviço: um ajuste que ficou "aplicando" (o PC desligou ou o serviço caiu no meio)
     /// volta ao que era antes, para nunca ficar uma mudança sem registro de como desfazer.
     /// </summary>

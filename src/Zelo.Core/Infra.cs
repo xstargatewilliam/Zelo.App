@@ -10,7 +10,10 @@ public static class Caminhos
 {
     public const string NomePipe = "Zelo.Servico";
 
-    public static string Base => Path.Combine(
+    /// <summary>Só para os testes automáticos: troca a pasta de dados por uma temporária.</summary>
+    internal static string? BaseParaTestes { get; set; }
+
+    public static string Base => BaseParaTestes ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Zelo");
 
     public static string Config => Path.Combine(Base, "config.json");

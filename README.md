@@ -22,11 +22,11 @@ Na primeira vez leva uns 5 minutos, por causa dos downloads.
 
 Se a compilação der erro, copie as mensagens vermelhas da janela e envie para correção.
 
-Para remover: **`DESINSTALAR.bat`**. Seus arquivos de backup nunca são apagados.
+Para remover: **`DESINSTALAR.bat`**. Ele pergunta se você quer voltar os ajustes da aba Otimizar antes de remover. Seus arquivos de backup nunca são apagados.
 
 ## Depois de instalar
 
-- Na primeira vez, o Zelo abre um assistente de 3 passos: quando ele pode trabalhar (casa, trabalho com o **seu** expediente — inclusive noturno — ou jogos), o que copiar no backup e uma primeira vistoria em simulação.
+- Na primeira vez, o Zelo abre um assistente de 3 passos: quando ele pode trabalhar (casa, trabalho com o **seu** expediente — inclusive noturno — ou jogos), o que copiar no backup, o que o Zelo pode instalar sozinho (você decide) e uma primeira vistoria em simulação.
 - Depois, abra o painel pelo Menu Iniciar (**Zelo**) ou pelo ícone da lua perto do relógio. O pontinho do ícone fica verde, âmbar ou coral conforme a saúde do PC.
 - **Simular antes** mostra o que cada verificação faria, sem apagar, instalar ou alterar nada. A seta ao lado de **Cuidar agora** roda ou simula a revisão semanal e o check-up mensal.
 - No menu do ícone da bandeja dá para **pausar por 1 hora**.
@@ -48,9 +48,9 @@ Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo*
 
 | Rotina | Tarefas |
 |---|---|
-| **Vistoria diária** | Atualização do antivírus + verificação rápida · saúde dos discos (SMART: desgaste, temperatura, erros) · espaço livre · erros graves no Visualizador de Eventos (telas azuis, desligamentos inesperados, falhas de disco) · reinicialização pendente · limpeza de temporários antigos · limpeza da pasta Downloads (opcional, só arquivos antigos) · backup incremental |
+| **Vistoria diária** | Atualização do antivírus + verificação rápida · saúde dos discos (SMART: desgaste, temperatura, erros) · espaço livre · erros graves no Visualizador de Eventos (telas azuis, desligamentos inesperados, falhas de disco) · reinicialização pendente · limpeza de temporários antigos · limpeza da pasta Downloads (opcional, só arquivos antigos) · backup incremental (guarda a versão anterior de cada arquivo alterado por 30 dias) |
 | **Revisão semanal** | Ponto de restauração · Windows Update (sem upgrades de versão) · drivers pelo Windows Update (opcional, sem os de vídeo) · placa de vídeo: idade do driver e software do fabricante para atualizar · atualização de programas (winget) · TRIM nos SSDs / desfragmentação só em HDs · Lixeira antiga (desligado por padrão) e cache de navegadores (Chrome, Edge, Firefox, Opera/Opera GX — opcional) · programas novos na inicialização |
-| **Check-up mensal** | DISM + SFC · limpeza segura do WinSxS · verificação do sistema de arquivos (sem reiniciar) · auditoria de segurança (firewall, UAC, BitLocker, SMBv1, administradores novos) · verificação completa do antivírus · **teste do backup** (compara arquivos por SHA-256) · saúde da bateria · maiores arquivos · drivers muito antigos |
+| **Check-up mensal** | DISM + SFC · limpeza segura do WinSxS · verificação do sistema de arquivos (sem reiniciar) · auditoria de segurança (firewall, UAC, BitLocker, SMBv1, administradores novos) · verificação completa do antivírus · **teste do backup** (sorteia 25 arquivos e compara por SHA-256; é uma amostra, não a conferência de todos) · saúde da bateria · maiores arquivos · drivers muito antigos |
 
 ### Quando as rotinas rodam
 
@@ -82,7 +82,7 @@ Na aba **Otimizar**, você escolhe como usa o PC (Jogos, Trabalho, Estudos, Edi�
 |---|---|
 | Programa | `C:\Program Files\Zelo` |
 | Configuração, histórico, logs, relatórios HTML | `C:\ProgramData\Zelo` |
-| Backup | `<destino>\Zelo-Backup\` |
+| Backup | `<destino>\Zelo-Backup\` (versões anteriores em `_versoes\aaaa-MM-dd_HHmm`) |
 
 ## Testar pelo terminal (opcional)
 
