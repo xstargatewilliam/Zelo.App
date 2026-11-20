@@ -837,10 +837,13 @@ public static class Otimizador
         switch (a.Tipo)
         {
             case TipoAjuste.Registro:
+                // Defesa extra: só restaura valores que pertencem a este ajuste no catálogo, mesmo que o
+                // arquivo de estado tenha sido alterado. Nunca escreve em outro lugar do registro.
+                var permitidos = a.Valores.Select(v => $"{v.Caminho}|{v.Nome}").ToHashSet(StringComparer.OrdinalIgnoreCase);
                 foreach (var (chave, valor) in ap.Anterior)
                 {
+                    if (!permitidos.Contains(chave)) { Registro.Escrever($"Otimizar: valor fora do catálogo ignorado ao desfazer {a.Id}."); continue; }
                     var partes = chave.Split('|', 2);
-                    if (partes.Length != 2) continue;
                     Restaurar(partes[0], partes[1], valor, ap.Sid);
                 }
                 break;
@@ -848,7 +851,8 @@ public static class Otimizador
             case TipoAjuste.Servico:
                 foreach (var (s, valor) in ap.Anterior)
                 {
-                    if (!int.TryParse(valor, out var inicio)) continue;
+                    if (!a.Servicos.Contains(s, StringComparer.OrdinalIgnoreCase)) continue;
+                    if (!int.TryParse(valor, out var inicio) || inicio is < 2 or > 4) continue;
                     Escrever($@"HKLM\SYSTEM\CurrentControlSet\Services\{s}", "Start", inicio, null);
                     if (inicio == 2) await Executor.PowerShellAsync($"Start-Service -Name '{s}' -ErrorAction SilentlyContinue", ct);
                 }

@@ -106,6 +106,32 @@ public sealed class Configuracao
     };
 
     public bool BackupConfigurado => PastasBackup.Count > 0 && !string.IsNullOrWhiteSpace(DestinoBackup);
+
+    /// <summary>
+    /// Mudanças que fazem o serviço (SYSTEM) copiar, apagar ou instalar algo além da limpeza comum,
+    /// ou que tiram uma proteção. Estas pedem a confirmação de administrador do Windows.
+    /// Regra: ligar ou apertar o que apaga, ou desligar o que protege, é sensível; o contrário não.
+    /// </summary>
+    public static List<string> MudancasSensiveis(Configuracao atual, Configuracao nova)
+    {
+        var r = new List<string>();
+        static string Chave(IEnumerable<string> l) => string.Join("|", l.Select(x => x.Trim().TrimEnd('\\').ToUpperInvariant()).OrderBy(x => x));
+        if (Chave(atual.PastasBackup) != Chave(nova.PastasBackup)
+            || !string.Equals((atual.DestinoBackup ?? "").Trim().TrimEnd('\\'), (nova.DestinoBackup ?? "").Trim().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+            r.Add("as pastas do backup");
+        if (atual.DiasVersoesBackup != nova.DiasVersoesBackup) r.Add("as versões do backup");
+        if ((nova.LimparDownloads && !atual.LimparDownloads) || (nova.LimparDownloads && nova.DiasDownloads < atual.DiasDownloads))
+            r.Add("a limpeza de Downloads");
+        if ((nova.EsvaziarLixeira && !atual.EsvaziarLixeira) || (nova.EsvaziarLixeira && nova.DiasLixeira < atual.DiasLixeira))
+            r.Add("o esvaziamento da Lixeira (de todas as contas)");
+        if (atual.InstalarWindowsUpdate != nova.InstalarWindowsUpdate) r.Add("a instalação do Windows Update");
+        if (atual.InstalarDriversWU != nova.InstalarDriversWU) r.Add("os drivers pelo Windows Update");
+        if (atual.AtualizarProgramasWinget != nova.AtualizarProgramasWinget) r.Add("a atualização de programas");
+        if (atual.AtualizacaoAutomatica != nova.AtualizacaoAutomatica) r.Add("a atualização automática do Zelo");
+        var protecoes = Catalogo.Todas.Where(t => t.Categoria is Categoria.Seguranca or Categoria.Backup).Select(t => t.Id).ToHashSet();
+        if (nova.TarefasDesativadas.Where(protecoes.Contains).Except(atual.TarefasDesativadas).Any()) r.Add("desligar verificações de segurança ou de backup");
+        return r;
+    }
 }
 
 public static class ArmazemConfig

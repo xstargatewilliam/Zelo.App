@@ -305,13 +305,16 @@ public sealed class LixeiraECache : Tarefa
                     var quando = DateTime.FromFileTimeUtc(BitConverter.ToInt64(b, 16));
                     if (quando > limite) continue;
 
-                    var dados = Path.Combine(Path.GetDirectoryName(info)!, "$R" + Path.GetFileName(info)[2..]);
+                    var pastaSid = Path.GetDirectoryName(info)!;
+                    var dados = Path.Combine(pastaSid, "$R" + Path.GetFileName(info)[2..]);
                     if (!ctx.Simulacao)
                     {
-                        if (Directory.Exists(dados)) Directory.Delete(dados, recursive: true);
-                        else if (File.Exists(dados)) { File.SetAttributes(dados, FileAttributes.Normal); File.Delete(dados); }
-                        File.SetAttributes(info, FileAttributes.Normal);
-                        File.Delete(info);
+                        // A pasta de cada conta na Lixeira pertence a essa conta: tudo é conferido antes de sair.
+                        if (!ArquivosSeguros.PastaConfiavel(pastaSid)) continue;
+                        bool ok = Directory.Exists(dados) && (File.GetAttributes(dados) & FileAttributes.ReparsePoint) == 0
+                            ? ArquivosSeguros.ApagarPasta(dados, pastaSid)
+                            : !File.Exists(dados) && !Directory.Exists(dados) || ArquivosSeguros.Apagar(dados, pastaSid);
+                        if (!ok || !ArquivosSeguros.Apagar(info, pastaSid)) continue;
                     }
                     bytes += Math.Max(0, tamanho); itens++;
                 }
@@ -344,8 +347,8 @@ public sealed class LixeiraECache : Tarefa
             foreach (var perfilUsuario in Perfis.Pastas())
             {
                 var raiz = Path.Combine(perfilUsuario, pai);
-                if (!Directory.Exists(raiz)) continue;
-                foreach (var perfilNav in Directory.EnumerateDirectories(raiz))
+                if (!Directory.Exists(raiz) || !ArquivosSeguros.PastaConfiavel(raiz)) continue;
+                foreach (var perfilNav in Directory.EnumerateDirectories(raiz, "*", Varredura(false)))
                 foreach (var sub in subpastas)
                 {
                     var pasta = Path.Combine(perfilNav, sub);
@@ -357,7 +360,7 @@ public sealed class LixeiraECache : Tarefa
                         {
                             var fi = new FileInfo(arq);
                             var t = fi.Length;
-                            if (!ctx.Simulacao) fi.Delete();
+                            if (!ctx.Simulacao && !ArquivosSeguros.Apagar(arq, raiz)) continue;
                             bytes += t;
                         }
                         catch { }
