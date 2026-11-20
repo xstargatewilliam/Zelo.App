@@ -882,28 +882,46 @@ public partial class MainWindow : Window
         _salvarTimer.Start();
     }
 
+    private bool _salvando, _salvarDeNovo;
+
+    /// <summary>
+    /// Um salvamento por vez, sempre com o que está na tela no momento do envio. Se a pessoa mudar
+    /// algo enquanto um salvamento espera (por exemplo, a confirmação do Windows), salva de novo no fim;
+    /// a resposta antiga nunca sobrescreve a tela mais nova.
+    /// </summary>
     private async Task SalvarConfigAsync()
     {
-        var c = LerConfigDaTela();
+        if (_salvando) { _salvarDeNovo = true; return; }
+        _salvando = true;
         try
         {
-            var r = await Elevacao.EnviarAsync(new Pedido { Comando = "config-salvar", Config = c });
-            if (!r.Ok)
+            do
             {
-                TxtSalvo.Foreground = Cores.Coral;
-                TxtSalvo.Text = r.Mensagem ?? "Não foi possível salvar.";
-                await CarregarConfigAsync(); // volta a tela ao que está valendo
-                return;
-            }
-            if (r.Config is not null) PreencherConfig(r.Config);
-            TxtSalvo.Foreground = Cores.Aurora;
-            TxtSalvo.Text = $"✓ Salvo às {DateTime.Now:HH:mm}";
-            if (_estado is not null) MostrarAgenda(_estado);
+                _salvarDeNovo = false;
+                var c = LerConfigDaTela();
+                var r = await Elevacao.EnviarAsync(new Pedido { Comando = "config-salvar", Config = c });
+                if (!r.Ok)
+                {
+                    TxtSalvo.Foreground = Cores.Coral;
+                    TxtSalvo.Text = r.Mensagem ?? "Não foi possível salvar.";
+                    _salvarDeNovo = false;
+                    await CarregarConfigAsync(); // volta a tela ao que está valendo
+                    return;
+                }
+                if (!_salvarDeNovo && r.Config is not null) PreencherConfig(r.Config);
+                TxtSalvo.Foreground = Cores.Aurora;
+                TxtSalvo.Text = $"✓ Salvo às {DateTime.Now:HH:mm}";
+                if (_estado is not null) MostrarAgenda(_estado);
+            } while (_salvarDeNovo);
         }
         catch (Exception ex)
         {
             TxtSalvo.Foreground = Cores.Coral;
             TxtSalvo.Text = "Serviço indisponível: " + ex.Message;
+        }
+        finally
+        {
+            _salvando = false;
         }
     }
 

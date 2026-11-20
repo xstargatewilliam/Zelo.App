@@ -17,7 +17,7 @@ public abstract class ComPastaTemporaria : IDisposable
         Caminhos.BaseParaTestes = Pasta;
     }
 
-    public void Dispose()
+    public virtual void Dispose()
     {
         Caminhos.BaseParaTestes = null;
         try { Directory.Delete(Pasta, true); } catch { }

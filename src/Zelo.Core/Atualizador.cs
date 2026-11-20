@@ -103,6 +103,16 @@ public static class Atualizador
             estado.UltimoErro = null;
             var atual = VersaoAtual;
 
+            // Uma versão que já falhou ao iniciar neste PC não é reinstalada sozinha (evita um ciclo de falhas).
+            var recusada = VersaoRecusada();
+            if (remota is not null && recusada is not null && remota.Versao == recusada)
+            {
+                estado.VersaoDisponivel = null;
+                estado.UltimoErro = $"A versão {recusada.ToString(3)} não iniciou neste PC e foi desfeita. O Zelo espera a próxima versão.";
+                GravarEstado(estado);
+                return estado.UltimoErro;
+            }
+
             if (remota is null || remota.Versao <= atual)
             {
                 estado.VersaoDisponivel = null;
@@ -149,6 +159,15 @@ public static class Atualizador
         {
             Trava.Release();
         }
+    }
+
+    /// <summary>Marcada pelo script de instalação quando a versão nova não consegue iniciar.</summary>
+    public static string ArquivoRecusada => Path.Combine(Caminhos.Estado, "atualizacao-recusada.txt");
+
+    private static Version? VersaoRecusada()
+    {
+        try { return File.Exists(ArquivoRecusada) ? LerVersao(File.ReadAllText(ArquivoRecusada)) : null; }
+        catch { return null; }
     }
 
     private static void ExigirGitHub(string url)
@@ -208,19 +227,50 @@ public static class Atualizador
             try { (Get-Service -Name Zelo).WaitForStatus('Stopped', '00:01:00') } catch {}
             Get-Process -Name Zelo.App -ErrorAction SilentlyContinue | Stop-Process -Force
             Start-Sleep -Seconds 2
-            $falhou = $false
+            $recusada = {{Q(ArquivoRecusada)}}
+            # 1) Guarda a versão atual. Sem essa cópia não há como voltar: então não instala nada.
+            $copiaOk = $true
             foreach ($p in 'Servico', 'Painel') {
               robocopy "$dest\$p" "$anterior\$p" /MIR /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
+              if ($LASTEXITCODE -ge 8) { $copiaOk = $false }
+            }
+            if (-not $copiaOk) {
+              Log 'Não foi possível guardar a versão atual. Atualização cancelada; nada foi trocado.'
+              Start-Service -Name Zelo -ErrorAction SilentlyContinue
+              exit 1
+            }
+            function Voltar($motivo) {
+              Log ("$motivo Restaurando a versão anterior.")
+              Stop-Service -Name Zelo -Force -ErrorAction SilentlyContinue
+              try { (Get-Service -Name Zelo).WaitForStatus('Stopped', '00:01:00') } catch {}
+              foreach ($p in 'Servico', 'Painel') { robocopy "$anterior\$p" "$dest\$p" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null }
+              Start-Service -Name Zelo -ErrorAction SilentlyContinue
+            }
+            # 2) Troca os arquivos.
+            $falhou = $false
+            foreach ($p in 'Servico', 'Painel') {
               robocopy "$novo\$p" "$dest\$p" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
               if ($LASTEXITCODE -ge 8) { $falhou = $true }
             }
             if ($falhou) {
-              Log 'Falha ao copiar os arquivos novos. Restaurando a versão anterior.'
-              foreach ($p in 'Servico', 'Painel') { robocopy "$anterior\$p" "$dest\$p" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null }
+              Voltar 'Falha ao copiar os arquivos novos.'
             } else {
               Log 'Arquivos da versão {{versao}} instalados.'
+              # 3) Confere se a versão nova inicia e continua rodando por 30 segundos.
+              Start-Service -Name Zelo -ErrorAction SilentlyContinue
+              $saudavel = $false
+              try {
+                (Get-Service -Name Zelo).WaitForStatus('Running', '00:01:00')
+                Start-Sleep -Seconds 30
+                $saudavel = (Get-Service -Name Zelo).Status -eq 'Running'
+              } catch {}
+              if (-not $saudavel) {
+                Voltar 'A versão {{versao}} não iniciou direito.'
+                Set-Content -Path $recusada -Value '{{versao}}' -Encoding UTF8
+              } else {
+                Remove-Item $recusada -ErrorAction SilentlyContinue
+              }
             }
-            Start-Service -Name Zelo -ErrorAction SilentlyContinue
             # Reabre o painel na bandeja de quem estiver logado (tarefa de uso único).
             try {
               $acao = New-ScheduledTaskAction -Execute "$dest\Painel\Zelo.App.exe" -Argument '--bandeja'

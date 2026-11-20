@@ -37,10 +37,12 @@ Uma vez por dia o serviço consulta a página **Releases** deste repositório. Q
 
 1. baixa o `Zelo-win-x64.zip` direto do GitHub, por HTTPS;
 2. confere o pacote com o SHA-256 publicado junto (se não bater, cancela);
-3. para o serviço, troca os arquivos, guarda uma cópia da versão anterior e volta a ela se a cópia falhar;
-4. reinicia o serviço e reabre o painel na bandeja.
+3. guarda uma cópia da versão atual (se não conseguir, não troca nada);
+4. para o serviço, troca os arquivos e o inicia de novo;
+5. confere se a versão nova continua rodando por 30 segundos; se não, volta para a anterior e não tenta mais aquela versão sozinho;
+6. reabre o painel na bandeja.
 
-Nunca atualiza no meio de uma rotina. Para desligar, desligue **O próprio Zelo** em Ajustes → Atualizações; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização** (Ajustes → Sobre) instala na hora. Qualquer pessoa do PC pode pedir a atualização: o Zelo só instala o pacote oficial publicado aqui, conferido pelo SHA-256.
+Nunca atualiza no meio de uma vistoria ou otimização, e a instalação automática só acontece no horário livre do seu perfil (e na tomada, se essa opção estiver ligada); fora dele, o Zelo só avisa que há versão nova. Para desligar, desligue **O próprio Zelo** em Ajustes → Atualizações; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização** (Ajustes → Sobre) instala na hora. Qualquer pessoa do PC pode pedir a atualização: o Zelo só instala o pacote oficial publicado aqui, conferido pelo SHA-256.
 
 **Para quem mantém o projeto:** suba o número em `<Version>` no `Directory.Build.props` e envie para o GitHub. O GitHub Actions compila e publica a versão em Releases sozinho.
 
@@ -126,12 +128,18 @@ O resto acontece sozinho:
 
 - O serviço roda como SYSTEM; o painel roda como o usuário, sem elevação, e conversa com o serviço por um canal local (named pipe) que recusa conexões pela rede.
 - **Livre para qualquer pessoa do PC**: ver o painel, rodar e parar vistorias, pausar, silenciar avisos, atualizar o Zelo e mudar horários, perfil, limpeza comum e avisos de disco.
-- **Pede a confirmação de administrador do Windows a cada vez** (o aviso do UAC): otimizar ou desfazer ajustes, mudar as pastas do backup, ligar a limpeza de Downloads, ligar ou desligar instalações automáticas, desligar verificações de segurança e confirmar alertas de segurança (como "esses administradores são meus"). Uma conta de administrador com o painel comum não basta: o Windows sempre pergunta.
+- **Pede a confirmação de administrador do Windows a cada vez** (o aviso do UAC): otimizar ou desfazer ajustes, mudar as pastas ou as versões do backup, ligar ou apertar a limpeza de Downloads, ligar ou apertar o esvaziamento da Lixeira (ele vale para todas as contas), ligar ou desligar instalações automáticas, desligar verificações de segurança ou de backup e confirmar alertas de segurança (como "esses administradores são meus"). Uma conta de administrador com o painel comum não basta: o Windows sempre pergunta. Desligar o que apaga é livre.
+- **O serviço nunca apaga nem escreve fora do lugar certo**: as limpezas (Temp, Downloads, cache, Lixeira) e o backup trabalham em pastas que outras contas controlam. Antes de apagar, o Zelo abre cada arquivo e pergunta ao Windows onde ele está de verdade; se uma pasta foi trocada por um atalho (junção ou link) que leva para outro lugar, nada sai de lá. O destino do backup também é conferido, e num disco NTFS fora das pastas de perfil a pasta `Zelo-Backup` fica com escrita só para o sistema e administradores (as outras contas leem, para recuperar arquivos).
+- **A pasta de dados (`C:\ProgramData\Zelo`) é protegida** pelo instalador e de novo pelo serviço sempre que ele inicia: só o sistema e administradores escrevem nela.
 - **Silenciar não é resolver**: um aviso silenciado sai da lista, mas continua contando na nota até uma nova verificação não encontrar mais o problema. Já quando você explica o que aconteceu ("foi queda de energia"), o achado conta como resolvido até a próxima verificação.
 - **Otimizar é transacional**: o Zelo anota como cada item estava antes de mudar, confere se a mudança pegou e, se o PC desligar no meio, desfaz o item incompleto quando o serviço volta. Se o ponto de restauração falhar, ele para e pergunta. Apps da Loja são removidos só da sua conta e voltam pela Microsoft Store (não pelo botão Desfazer).
 - Uma operação pesada por vez: vistoria, otimização e atualização do Zelo nunca rodam juntas.
 
 ### Limitações conhecidas
+
+- O programa ainda não tem assinatura digital: o Windows mostra "Fornecedor desconhecido" ao abrir o que foi baixado. As atualizações são conferidas pelo SHA-256 publicado no próprio GitHub, que garante que o pacote chegou inteiro, mas não é uma prova independente de quem o publicou.
+- Durante o backup, o robocopy escreve no destino como SYSTEM. O Zelo confere o destino antes de cada cópia; num destino dentro da pasta de perfil de outra conta (onde essa conta pode mexer), um atalho criado no meio da cópia ainda poderia desviar a escrita. Prefira um disco externo ou uma pasta sua.
+- O aviso do UAC mostra "Zelo", mas não qual ação será feita: confirme só quando você mesmo clicou em algo no Zelo.
 
 - Programas instalados só para um usuário podem não ser atualizados pelo winget, porque o serviço roda como SYSTEM.
 - O Windows cria no máximo um ponto de restauração a cada 24h.

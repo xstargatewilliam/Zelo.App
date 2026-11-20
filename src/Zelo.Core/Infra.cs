@@ -22,6 +22,24 @@ public static class Caminhos
     public static string Logs => Path.Combine(Base, "logs");
     public static string Estado => Path.Combine(Base, "estado");
 
+    /// <summary>
+    /// Deixa a pasta de dados com escrita só para o sistema e administradores (as outras contas leem).
+    /// O instalador já faz isso; o serviço repete ao iniciar porque essa pasta guarda o que ele
+    /// executa com privilégio (configuração, diário da otimização, script de atualização).
+    /// Também tira permissões próprias que algum arquivo tenha ganhado, e o dono passa a ser Administradores.
+    /// </summary>
+    public static async Task ProtegerDadosAsync(CancellationToken ct)
+    {
+        Garantir();
+        var icacls = Path.Combine(Environment.SystemDirectory, "icacls.exe");
+        var r1 = await Executor.ProcessoAsync(icacls,
+            $"\"{Base}\" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX", ct);
+        var r2 = await Executor.ProcessoAsync(icacls, $"\"{Base}\\*\" /reset /T /C /Q", ct);
+        var r3 = await Executor.ProcessoAsync(icacls, $"\"{Base}\" /setowner *S-1-5-32-544 /T /C /Q", ct);
+        if (r1.Codigo != 0 || r2.Codigo != 0 || r3.Codigo != 0)
+            Registro.Escrever($"Aviso: não foi possível conferir todas as permissões da pasta de dados (códigos {r1.Codigo}/{r2.Codigo}/{r3.Codigo}).");
+    }
+
     public static void Garantir()
     {
         Directory.CreateDirectory(Base);

@@ -17,6 +17,8 @@ public sealed class Agendador : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken parar)
     {
         Caminhos.Garantir();
+        try { await Caminhos.ProtegerDadosAsync(parar); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Registro.Escrever("Aviso: falha ao proteger a pasta de dados: " + ex.Message); }
         _ = Agenda.Instalacao; // registra a data da primeira execução
         Registro.Escrever("Serviço iniciado.");
 
@@ -51,9 +53,16 @@ public sealed class Agendador : BackgroundService
 
         // Uma consulta ao GitHub por dia; instala sozinha se a opção estiver ligada.
         var ultimaConsulta = Atualizador.LerEstado().UltimaVerificacao;
-        if (ultimaConsulta is null || DateTime.Now - ultimaConsulta > TimeSpan.FromHours(20))
+        var pendente = Atualizador.LerEstado().VersaoDisponivel is not null && cfg.AtualizacaoAutomatica
+                       && cfg.DentroDaJanela(DateTime.Now) && (!cfg.SomenteNaTomada || Nativo.NaTomada());
+        if (ultimaConsulta is null || DateTime.Now - ultimaConsulta > TimeSpan.FromHours(20)
+            || (pendente && DateTime.Now - ultimaConsulta > TimeSpan.FromHours(1)))
         {
-            var msg = await Atualizador.VerificarEAplicarAsync(cfg.AtualizacaoAutomatica, parar);
+            // Instalar reinicia o serviço e o painel: só no horário livre do perfil e na tomada.
+            // Fora dele, só verifica; a instalação fica para o próximo horário livre.
+            var podeInstalar = cfg.AtualizacaoAutomatica && cfg.DentroDaJanela(DateTime.Now)
+                               && (!cfg.SomenteNaTomada || Nativo.NaTomada());
+            var msg = await Atualizador.VerificarEAplicarAsync(podeInstalar, parar);
             Registro.Escrever("Atualização: " + msg);
             if (Atualizador.EmAndamento || msg.StartsWith("Instalando")) return; // o serviço vai reiniciar
         }

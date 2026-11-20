@@ -308,6 +308,10 @@ public sealed class ServidorPipe : BackgroundService
 
             case "config-salvar":
                 if (p.Config is null) return new Resposta { Ok = false, Mensagem = "Configuração vazia." };
+                // Normaliza antes de comparar: listas nulas, espaços e números fora do limite não passam.
+                p.Config.PastasBackup ??= new();
+                p.Config.TarefasDesativadas ??= new();
+                p.Config.Validar();
                 // Horários, limpeza e avisos qualquer pessoa ajusta. O que decide o que o serviço (SYSTEM)
                 // copia ou apaga fora das pastas temporárias, ou o que ele instala, só administradores.
                 var sensivel = MudancasSensiveis(ArmazemConfig.Carregar(), p.Config);
@@ -325,19 +329,7 @@ public sealed class ServidorPipe : BackgroundService
     }
 
     /// <summary>Opções que fazem o serviço copiar, apagar ou instalar coisas além da limpeza comum.</summary>
-    private static List<string> MudancasSensiveis(Configuracao atual, Configuracao nova)
-    {
-        var r = new List<string>();
-        if (!atual.PastasBackup.SequenceEqual(nova.PastasBackup) || atual.DestinoBackup != nova.DestinoBackup) r.Add("as pastas do backup");
-        if (atual.LimparDownloads != nova.LimparDownloads || (nova.LimparDownloads && atual.DiasDownloads != nova.DiasDownloads)) r.Add("a limpeza de Downloads");
-        if (atual.InstalarWindowsUpdate != nova.InstalarWindowsUpdate) r.Add("a instalação do Windows Update");
-        if (atual.InstalarDriversWU != nova.InstalarDriversWU) r.Add("os drivers pelo Windows Update");
-        if (atual.AtualizarProgramasWinget != nova.AtualizarProgramasWinget) r.Add("a atualização de programas");
-        if (atual.AtualizacaoAutomatica != nova.AtualizacaoAutomatica) r.Add("a atualização automática do Zelo");
-        var seguranca = Catalogo.Todas.Where(t => t.Categoria == Categoria.Seguranca).Select(t => t.Id).ToHashSet();
-        if (nova.TarefasDesativadas.Where(seguranca.Contains).Except(atual.TarefasDesativadas).Any()) r.Add("desligar verificações de segurança");
-        return r;
-    }
+    internal static List<string> MudancasSensiveis(Configuracao atual, Configuracao nova) => Configuracao.MudancasSensiveis(atual, nova);
 
     /// <summary>O serviço roda como SYSTEM: não deixamos o backup escrever em pastas do Windows.</summary>
     private static string? ValidarDestino(Configuracao c)

@@ -256,33 +256,45 @@ public sealed class LimpezaTemporarios : Tarefa
         pastas.AddRange(Perfis.Pastas().Select(p => Path.Combine(p, @"AppData\Local\Temp")));
 
         long bytes = 0; int apagados = 0, emUso = 0;
+        var ignoradas = new List<string>();
         foreach (var pasta in pastas.Where(Directory.Exists))
         {
             ct.ThrowIfCancellationRequested();
-            foreach (var arq in Directory.EnumerateFiles(pasta, "*", Varredura()))
-            {
-                ct.ThrowIfCancellationRequested();
-                try
-                {
-                    var fi = new FileInfo(arq);
-                    if (fi.LastWriteTime > limite || fi.CreationTime > limite) continue;
-                    var tam = fi.Length;
-                    if (!ctx.Simulacao)
-                    {
-                        if (fi.IsReadOnly) fi.IsReadOnly = false;
-                        fi.Delete();
-                    }
-                    bytes += tam; apagados++;
-                }
-                catch { emUso++; }
-            }
-            if (!ctx.Simulacao) ApagarPastasVazias(pasta, limite);
+            // Uma pasta trocada por atalho levaria o serviço a apagar fora dela: fica de fora.
+            if (!ArquivosSeguros.PastaConfiavel(pasta)) { ignoradas.Add(pasta); continue; }
+            var (b, q, u) = ApagarAntigos(pasta, limite, ctx.Simulacao, ct);
+            bytes += b; apagados += q; emUso += u;
         }
 
         var verbo = ctx.Simulacao ? "seriam liberados" : "liberados";
-        var det = new List<string> { $"Pastas verificadas: {pastas.Count(Directory.Exists)}", $"Arquivos com mais de {ctx.Config.DiasTemporarios} dias: {apagados}" };
-        if (emUso > 0) det.Add($"{emUso} arquivo(s) em uso foram mantidos.");
+        var det = new List<string> { $"Pastas verificadas: {pastas.Count(Directory.Exists) - ignoradas.Count}", $"Arquivos com mais de {ctx.Config.DiasTemporarios} dias: {apagados}" };
+        if (emUso > 0) det.Add($"{emUso} arquivo(s) em uso ou fora da pasta foram mantidos.");
+        foreach (var p in ignoradas) det.Add($"Ignorada por segurança (é um atalho para outro lugar): {p}");
         return Task.FromResult(Res(StatusTarefa.Ok, $"{ctx.Sim}{Textos.Tamanho(bytes)} {verbo} ({apagados} arquivos).", det));
+    }
+
+    /// <summary>
+    /// Apaga, dentro de <paramref name="raiz"/>, os arquivos criados e alterados antes de <paramref name="limite"/>.
+    /// Cada arquivo é conferido pelo Windows antes de sair (ArquivosSeguros): nada fora da raiz é tocado.
+    /// </summary>
+    internal static (long bytes, int apagados, int mantidos) ApagarAntigos(string raiz, DateTime limite, bool simulacao, CancellationToken ct)
+    {
+        long bytes = 0; int apagados = 0, mantidos = 0;
+        foreach (var arq in Directory.EnumerateFiles(raiz, "*", Varredura()))
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var fi = new FileInfo(arq);
+                if (fi.LastWriteTime > limite || fi.CreationTime > limite) continue;
+                var tam = fi.Length;
+                if (!simulacao && !ArquivosSeguros.Apagar(arq, raiz)) { mantidos++; continue; }
+                bytes += tam; apagados++;
+            }
+            catch { mantidos++; }
+        }
+        if (!simulacao) ApagarPastasVazias(raiz, limite);
+        return (bytes, apagados, mantidos);
     }
 
     internal static void ApagarPastasVazias(string raiz, DateTime limite)
@@ -300,7 +312,7 @@ public sealed class LimpezaTemporarios : Tarefa
                 try
                 {
                     if (Directory.GetLastWriteTime(d) < limite && !Directory.EnumerateFileSystemEntries(d).Any())
-                        Directory.Delete(d);
+                        ArquivosSeguros.Apagar(d, raiz); // só sai se estiver vazia e dentro da raiz
                 }
                 catch { }
             }
@@ -330,31 +342,15 @@ public sealed class LimpezaDownloads : Tarefa
         {
             var pasta = Path.Combine(perfil, "Downloads");
             if (!Directory.Exists(pasta)) continue;
-            long bytesPerfil = 0; int qtdPerfil = 0;
-            foreach (var arq in Directory.EnumerateFiles(pasta, "*", Varredura()))
-            {
-                ct.ThrowIfCancellationRequested();
-                try
-                {
-                    var fi = new FileInfo(arq);
-                    // CreationTime = quando o arquivo chegou na pasta; LastWriteTime protege o que foi editado depois.
-                    if (fi.CreationTime > limite || fi.LastWriteTime > limite) continue;
-                    var tam = fi.Length;
-                    if (!ctx.Simulacao)
-                    {
-                        if (fi.IsReadOnly) fi.IsReadOnly = false;
-                        fi.Delete();
-                    }
-                    bytesPerfil += tam; qtdPerfil++;
-                }
-                catch { emUso++; }
-            }
-            if (!ctx.Simulacao) LimpezaTemporarios.ApagarPastasVazias(pasta, limite);
+            if (!ArquivosSeguros.PastaConfiavel(pasta)) { det.Add($"Ignorada por segurança (é um atalho para outro lugar): {pasta}"); continue; }
+            // CreationTime = quando o arquivo chegou na pasta; LastWriteTime protege o que foi editado depois.
+            var (bytesPerfil, qtdPerfil, mantidos) = LimpezaTemporarios.ApagarAntigos(pasta, limite, ctx.Simulacao, ct);
+            emUso += mantidos;
             if (qtdPerfil > 0) det.Add($"{Path.GetFileName(perfil)}: {qtdPerfil} arquivo(s), {Textos.Tamanho(bytesPerfil)}");
             bytes += bytesPerfil; apagados += qtdPerfil;
         }
 
-        if (emUso > 0) det.Add($"{emUso} arquivo(s) em uso foram mantidos.");
+        if (emUso > 0) det.Add($"{emUso} arquivo(s) em uso ou fora da pasta foram mantidos.");
         var verbo = ctx.Simulacao ? "seriam apagados" : "apagados";
         return Task.FromResult(Res(StatusTarefa.Ok,
             apagados == 0 ? $"Nada com mais de {dias} dias na pasta Downloads."
@@ -418,14 +414,14 @@ public sealed class BackupIncremental : Tarefa
     internal static int LimparVersoes(string destino, int dias)
     {
         var raiz = PastaVersoes(destino);
-        if (dias <= 0 || !Directory.Exists(raiz)) return 0;
+        if (dias <= 0 || !Directory.Exists(raiz) || !ArquivosSeguros.PastaConfiavel(raiz)) return 0;
         int apagadas = 0;
         foreach (var pasta in Directory.EnumerateDirectories(raiz))
         {
             if (!DateTime.TryParseExact(Path.GetFileName(pasta), "yyyy-MM-dd_HHmm", System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.None, out var quando)) continue;
             if (quando >= DateTime.Now.AddDays(-dias)) continue;
-            try { Directory.Delete(pasta, true); apagadas++; } catch { }
+            if (ArquivosSeguros.ApagarPasta(pasta, raiz)) apagadas++;
         }
         return apagadas;
     }
@@ -439,6 +435,27 @@ public sealed class BackupIncremental : Tarefa
         var raizDestino = Path.GetPathRoot(c.DestinoBackup);
         if (string.IsNullOrEmpty(raizDestino) || !Directory.Exists(raizDestino))
             return ResultadoSemDestino($"Destino {c.DestinoBackup} indisponível (disco externo desconectado?).");
+
+        // O serviço escreve como SYSTEM no destino: nenhum trecho dele pode ser atalho para outro lugar.
+        var raizZelo = Path.Combine(c.DestinoBackup, "Zelo-Backup");
+        if (!ctx.Simulacao)
+        {
+            try
+            {
+                Directory.CreateDirectory(c.DestinoBackup);
+                if (!ArquivosSeguros.PastaConfiavel(c.DestinoBackup))
+                    return Res(StatusTarefa.Critico, "Por segurança, o backup não rodou: o destino é um atalho para outra pasta. Escolha o destino de novo em Ajustes.");
+                Directory.CreateDirectory(raizZelo);
+                ProtegerDestino(raizZelo);
+                if (ArquivosSeguros.PrimeiroAtalho(raizZelo) is { } atalho)
+                    return Res(StatusTarefa.Critico, "Por segurança, o backup não rodou: alguém criou um atalho de pasta dentro do backup.",
+                        new List<string> { "Atalho encontrado: " + atalho, "Apague esse atalho (não a pasta de destino dele) e rode o backup de novo." });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return ResultadoSemDestino($"Não foi possível usar o destino {c.DestinoBackup}: {ex.Message}");
+            }
+        }
 
         var det = new List<string>();
         var falhas = 0;
@@ -486,6 +503,43 @@ public sealed class BackupIncremental : Tarefa
         if (falhas > 0)
             return Res(StatusTarefa.Aviso, $"{falhas} de {c.PastasBackup.Count} pasta(s) com problema no backup.", det);
         return Res(StatusTarefa.Ok, $"{ctx.Sim}Backup de {c.PastasBackup.Count} pasta(s) concluído.", det);
+    }
+
+    /// <summary>
+    /// Num disco NTFS fora das pastas de perfil (disco externo, segundo disco), a pasta Zelo-Backup fica
+    /// só com escrita para o sistema e administradores; as outras contas podem ler (para recuperar
+    /// arquivos), mas não criar nada dentro dela. Isso impede que alguém plante um atalho para fazer o
+    /// serviço escrever fora do backup. Em pastas de perfil (OneDrive, Documentos) nada é mudado.
+    /// </summary>
+    internal static void ProtegerDestino(string raizZelo)
+    {
+        try
+        {
+            var cheio = Path.GetFullPath(raizZelo);
+            if (Perfis.Pastas().Any(p => cheio.StartsWith(Path.GetFullPath(p).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))) return;
+            var unidade = new DriveInfo(Path.GetPathRoot(cheio)!);
+            if (!string.Equals(unidade.DriveFormat, "NTFS", StringComparison.OrdinalIgnoreCase)) return;
+
+            var heranca = System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit;
+            var nenhuma = System.Security.AccessControl.PropagationFlags.None;
+            var permitir = System.Security.AccessControl.AccessControlType.Allow;
+            var ds = new System.Security.AccessControl.DirectorySecurity();
+            ds.SetAccessRuleProtection(true, false);
+            foreach (var (sid, direito) in new[]
+                     {
+                         (System.Security.Principal.WellKnownSidType.LocalSystemSid, System.Security.AccessControl.FileSystemRights.FullControl),
+                         (System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, System.Security.AccessControl.FileSystemRights.FullControl),
+                         (System.Security.Principal.WellKnownSidType.BuiltinUsersSid, System.Security.AccessControl.FileSystemRights.ReadAndExecute),
+                     })
+                ds.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                    new System.Security.Principal.SecurityIdentifier(sid, null), direito, heranca, nenhuma, permitir));
+            ds.SetOwner(new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null));
+            new DirectoryInfo(cheio).SetAccessControl(ds);
+        }
+        catch (Exception ex)
+        {
+            Registro.Escrever("Backup: não foi possível proteger as permissões da pasta Zelo-Backup: " + ex.Message);
+        }
     }
 
     private static ResultadoTarefa ResultadoSemDestino(string msg)
