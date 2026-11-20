@@ -250,9 +250,11 @@ public partial class MainWindow
                 Ids = sistema.Select(a => a.Id).ToList(),
                 PerfisUso = _perfisUso.ToList(),
             };
+            TxtOtimProgresso.Text = "Esperando a sua confirmação no aviso do Windows…";
             var r = await Elevacao.EnviarAsync(pedido);
             if (!r.Ok)
             {
+                TxtOtimProgresso.Text = "Nada foi alterado.";
                 Aviso(r.Mensagem ?? "Não deu certo.");
                 return;
             }
