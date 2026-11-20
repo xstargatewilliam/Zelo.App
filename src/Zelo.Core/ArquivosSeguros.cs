@@ -63,9 +63,14 @@ public static class ArquivosSeguros
         return s;
     }
 
-    private static SafeFileHandle Abrir(string caminho, uint acesso) =>
+    /// <param name="seguirUltimo">
+    /// false: abre o próprio link ou junção do último trecho (para apagar só o atalho, nunca o destino dele);
+    /// true: segue até o destino (para descobrir para onde uma pasta leva de verdade).
+    /// Os trechos do meio do caminho são sempre seguidos pelo Windows.
+    /// </param>
+    private static SafeFileHandle Abrir(string caminho, uint acesso, bool seguirUltimo = false) =>
         CreateFileW(@"\\?\" + Path.GetFullPath(caminho), acesso, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING,
-            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+            (seguirUltimo ? 0 : FILE_FLAG_OPEN_REPARSE_POINT) | FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint GetLongPathNameW(string curto, StringBuilder longo, uint tamanho);
@@ -91,7 +96,7 @@ public static class ArquivosSeguros
     {
         try
         {
-            using var h = Abrir(pasta, FILE_READ_ATTRIBUTES);
+            using var h = Abrir(pasta, FILE_READ_ATTRIBUTES, seguirUltimo: true);
             if (h.IsInvalid) return false;
             var real = CaminhoReal(h);
             return real is not null && string.Equals(Normal(real), Normal(pasta), StringComparison.OrdinalIgnoreCase);
