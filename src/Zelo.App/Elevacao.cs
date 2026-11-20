@@ -55,7 +55,16 @@ public static class Elevacao
             return new Resposta { Ok = false, Mensagem = "Não foi possível pedir a confirmação do Windows: " + ex.Message };
         }
         if (proc is null) return new Resposta { Ok = false, Mensagem = "Não foi possível pedir a confirmação do Windows." };
-        await proc.WaitForExitAsync();
+        // Nunca espera para sempre: se a cópia elevada não responder em 2 minutos, encerra e avisa.
+        using (var limite = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(2)))
+        {
+            try { await proc.WaitForExitAsync(limite.Token); }
+            catch (OperationCanceledException)
+            {
+                try { proc.Kill(); } catch { }
+                return new Resposta { Ok = false, Mensagem = "O Windows confirmou, mas o serviço do Zelo não respondeu. Nada foi alterado. Tente de novo; se continuar, me mande o log." };
+            }
+        }
         try
         {
             if (File.Exists(arqResposta))
@@ -79,7 +88,8 @@ public static class Elevacao
         {
             var p = Json.Desserializar<Pedido>(Encoding.UTF8.GetString(Convert.FromBase64String(pedidoBase64)))
                     ?? throw new InvalidOperationException("Pedido inválido.");
-            r = ClientePipe.EnviarAsync(p).GetAwaiter().GetResult();
+            // Fora da thread da interface: esperar ali travava a cópia elevada para sempre.
+            r = Task.Run(() => ClientePipe.EnviarAsync(p)).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
