@@ -75,15 +75,15 @@ public static class ClientePipe
             // Identificação: o serviço só pode consultar quem é o usuário (para checar se é administrador), não agir em nome dele.
             TokenImpersonationLevel.Identification);
         using var cts = new CancellationTokenSource(timeoutMs);
-        await pipe.ConnectAsync(cts.Token).ConfigureAwait(false);
+        await pipe.ConnectAsync(cts.Token);
 
         var utf8 = new UTF8Encoding(false);
         using var escritor = new StreamWriter(pipe, utf8, 4096, leaveOpen: true) { AutoFlush = true };
         using var leitor = new StreamReader(pipe, utf8, false, 65536, leaveOpen: true);
 
-        await escritor.WriteLineAsync(Json.Serializar(pedido)).ConfigureAwait(false);
+        await escritor.WriteLineAsync(Json.Serializar(pedido));
         using var cts2 = new CancellationTokenSource(esperaMs);
-        var linha = await leitor.ReadLineAsync(cts2.Token).ConfigureAwait(false)
+        var linha = await leitor.ReadLineAsync(cts2.Token)
                     ?? throw new IOException("O serviço fechou a conexão sem responder.");
         return Json.Desserializar<Resposta>(linha) ?? throw new IOException("Resposta inválida do serviço.");
     }
