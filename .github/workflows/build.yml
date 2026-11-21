@@ -45,7 +45,7 @@ jobs:
 
       - name: Testes automáticos
         shell: pwsh
-        run: dotnet test tests/Zelo.Tests/Zelo.Tests.csproj -c Release --nologo --logger "console;verbosity=normal"
+        run: dotnet test tests/Zelo.Tests/Zelo.Tests.csproj -c Release --nologo --logger "console;verbosity=detailed"
 
       - name: Compilar serviço e painel (win-x64)
         shell: pwsh

@@ -129,76 +129,168 @@ public sealed class AtualizacaoProgramas : Tarefa
         return partes.Length > 1 && Version.TryParse(partes[1], out var v) ? v : new Version(0, 0);
     }
 
+    /// <summary>Um programa com atualização disponível, lido da tabela do "winget upgrade".</summary>
+    internal sealed record PacoteWinget(string Nome, string Id, string Versao, string Disponivel);
+
+    private static readonly TimeSpan LimitePorPrograma = TimeSpan.FromMinutes(15);
+
     protected override async Task<ResultadoTarefa> ExecutarInternoAsync(Contexto ctx, CancellationToken ct)
     {
         var winget = LocalizarWinget();
         if (winget is null)
             return Res(StatusTarefa.Ignorada, "winget não encontrado. Instale o \"Instalador de Aplicativo\" pela Microsoft Store.");
+        ctx.Log($"   winget: usando {winget}");
 
-        var args = ctx.Simulacao
-            ? "upgrade --accept-source-agreements --disable-interactivity"
-            : "upgrade --all --silent --accept-source-agreements --accept-package-agreements --disable-interactivity";
-        var r = await Executor.ProcessoAsync(winget, args, ct, System.Text.Encoding.UTF8);
-        var linhas = r.Linhas(25).ToList();
+        // 1) Lista o que tem atualização. Um programa por vez depois: um instalador travado não prende os outros.
+        var lista = await Executor.ProcessoAsync(winget, "upgrade --accept-source-agreements --disable-interactivity", ct, System.Text.Encoding.UTF8);
+        var pacotes = LerTabela(lista.Saida);
+        if (pacotes is null)
+        {
+            if (lista.Codigo == 0 || unchecked((uint)lista.Codigo) == 0x8A15002B)
+                return Res(StatusTarefa.Ok, "Todos os programas já estavam atualizados.");
+            var detLista = new List<string> { $"Código 0x{lista.Codigo:X8}: {ExplicarCodigo(lista.Codigo)}" };
+            detLista.AddRange(lista.Linhas(15));
+            foreach (var l in detLista) ctx.Log("   winget: " + l);
+            return Res(StatusTarefa.Aviso, "Não foi possível listar as atualizações: " + ExplicarCodigo(lista.Codigo), detLista);
+        }
+        ctx.Log($"   winget: {pacotes.Count} programa(s) com atualização: {string.Join(", ", pacotes.Select(p => p.Id))}");
+        if (pacotes.Count == 0) return Res(StatusTarefa.Ok, "Todos os programas já estavam atualizados.");
 
+        var componentes = pacotes.Where(p => Frameworks.Any(fw => p.Id.StartsWith(fw, StringComparison.OrdinalIgnoreCase))).ToList();
+        var programas = pacotes.Except(componentes).ToList();
         if (ctx.Simulacao)
-            return Res(StatusTarefa.Ok, "[Simulação] Lista de programas com atualização disponível.", linhas);
+            return Res(StatusTarefa.Ok, $"[Simulação] {programas.Count} programa(s) com atualização.",
+                programas.Select(p => $"{p.Nome}: {p.Versao} → {p.Disponivel}").ToList());
 
-        var (ok, falhas) = Resumir(r.Saida);
-        // Componentes do Windows em formato MSIX não instalam pela conta SYSTEM; a Microsoft Store os atualiza sozinha.
-        var relevantes = falhas.Where(f => !Frameworks.Any(fw => f.id.StartsWith(fw, StringComparison.OrdinalIgnoreCase))).ToList();
-        var ignoradas = falhas.Except(relevantes).ToList();
-
+        // 2) Atualiza um por um, com limite de tempo para cada.
         var det = new List<string>();
-        det.AddRange(ok.Select(n => "Atualizado: " + n));
-        det.AddRange(relevantes.Select(f => $"FALHOU: {f.nome} ({f.erro})"));
-        det.AddRange(ignoradas.Select(f => $"Ignorado: {f.nome} — componente do Windows, atualizado pela Microsoft Store"));
+        int ok = 0;
+        var falhas = new List<string>();
+        foreach (var p in programas)
+        {
+            ct.ThrowIfCancellationRequested();
+            ctx.Log($"   winget: atualizando {p.Nome} [{p.Id}] {p.Versao} → {p.Disponivel}");
+            using var limite = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limite.CancelAfter(LimitePorPrograma);
+            SaidaProcesso r;
+            try
+            {
+                r = await Executor.ProcessoAsync(winget,
+                    $"upgrade --id \"{p.Id}\" --exact --silent --accept-source-agreements --accept-package-agreements --disable-interactivity",
+                    limite.Token, System.Text.Encoding.UTF8);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var msg = $"{p.Nome}: passou de {LimitePorPrograma.TotalMinutes:0} minutos e foi interrompido. O instalador provavelmente abriu uma janela, que o serviço não consegue mostrar.";
+                falhas.Add(msg);
+                ctx.Log("   winget: " + msg);
+                continue;
+            }
 
-        if (ok.Count == 0 && falhas.Count == 0)
-        {
-            bool nadaAFazer = r.Codigo == 0 || unchecked((uint)r.Codigo) == 0x8A15002B;
-            return nadaAFazer
-                ? Res(StatusTarefa.Ok, "Todos os programas já estavam atualizados.")
-                : Res(StatusTarefa.Aviso, $"O winget terminou com código 0x{r.Codigo:X8}.", linhas);
+            if (r.Codigo == 0 || InstalouComSucesso(r.Saida) || unchecked((uint)r.Codigo) is 0x8A150109 or 0x8A15010A)
+            {
+                ok++;
+                det.Add($"Atualizado: {p.Nome} ({p.Versao} → {p.Disponivel})"
+                        + (unchecked((uint)r.Codigo) is 0x8A150109 or 0x8A15010A ? " — termina depois de reiniciar o PC" : ""));
+                ctx.Log($"   winget: {p.Nome} atualizado.");
+            }
+            else
+            {
+                var motivo = ExplicarCodigo(r.Codigo);
+                falhas.Add($"{p.Nome}: {motivo} (código 0x{r.Codigo:X8})");
+                ctx.Log($"   winget: {p.Nome} falhou: {motivo} (0x{r.Codigo:X8})");
+                foreach (var l in r.Linhas(8)) ctx.Log("      " + l);
+            }
         }
-        if (relevantes.Count > 0)
+
+        det.AddRange(falhas.Select(f => "FALHOU: " + f));
+        det.AddRange(componentes.Select(c => $"Ignorado: {c.Nome} — o Windows ou a Microsoft atualizam sozinhos"));
+        if (falhas.Count > 0)
         {
-            det.Add("Esses podem ser atualizados abrindo o próprio programa ou rodando \"winget upgrade --all\" no Terminal.");
-            return Res(StatusTarefa.Aviso, $"{ok.Count} programa(s) atualizado(s); {relevantes.Count} não puderam ser atualizados automaticamente.", det);
+            det.Add("Os detalhes de cada falha estão em Registro (no menu do Zelo).");
+            det.Add("Esses programas podem ser atualizados abrindo o próprio programa, ou pelo Terminal com \"winget upgrade --all\".");
+            return Res(StatusTarefa.Aviso, $"{ok} programa(s) atualizado(s); {falhas.Count} não puderam ser atualizados.", det);
         }
-        return Res(StatusTarefa.Ok, $"{ok.Count} programa(s) atualizado(s).", det);
+        return Res(StatusTarefa.Ok, $"{ok} programa(s) atualizado(s).", det);
     }
 
-    private static readonly string[] Frameworks = { "Microsoft.VCLibs", "Microsoft.UI.Xaml", "Microsoft.WindowsAppRuntime", "Microsoft.DesktopAppInstaller" };
-
-    /// <summary>Lê a saída do winget: "(3/19) Found Nome [Id] Version x" seguido de sucesso ou erro.</summary>
-    internal static (List<string> ok, List<(string nome, string id, string erro)> falhas) Resumir(string saida)
+    /// <summary>
+    /// Ficam de fora: componentes do Windows (a Loja atualiza), o próprio winget (App Installer: atualizá-lo
+    /// com ele mesmo rodando falha) e o Edge/WebView2 (atualizam sozinhos pelo serviço da Microsoft).
+    /// </summary>
+    internal static readonly string[] Frameworks =
     {
-        var ok = new List<string>();
-        var falhas = new List<(string nome, string id, string erro)>();
-        var cabecalho = new System.Text.RegularExpressions.Regex(@"^\(\d+/\d+\)\s+\S+\s+(.+?)\s+\[([^\]]+)\]");
-        var erroHex = new System.Text.RegularExpressions.Regex(@"0x[0-9A-Fa-f]{8}.*");
-        string? nome = null, id = null;
+        "Microsoft.VCLibs", "Microsoft.UI.Xaml", "Microsoft.WindowsAppRuntime", "Microsoft.DesktopAppInstaller",
+        "Microsoft.AppInstaller", "Microsoft.Edge", "Microsoft.EdgeWebView2Runtime",
+    };
 
-        foreach (var bruta in saida.Split('\n', '\r'))
+    internal static bool InstalouComSucesso(string saida) =>
+        saida.Contains("Successfully installed", StringComparison.OrdinalIgnoreCase)
+        || saida.Contains("instalado com êxito", StringComparison.OrdinalIgnoreCase)
+        || saida.Contains("instalado com sucesso", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Lê a tabela do "winget upgrade" (Nome, Id, Versão, Disponível, Origem), em qualquer idioma:
+    /// acha o cabeçalho pela linha de traços logo abaixo e corta as colunas pelas posições dele.
+    /// null = não havia tabela (nenhuma atualização, ou erro).
+    /// </summary>
+    internal static List<PacoteWinget>? LerTabela(string saida)
+    {
+        // Barras de progresso reescrevem a linha com \r: vale o que ficou por último.
+        var linhas = saida.Replace("\r\n", "\n").Split('\n')
+            .Select(l => l.Contains('\r') ? l[(l.LastIndexOf('\r') + 1)..] : l).ToList();
+        int h = -1;
+        for (int i = 0; i + 1 < linhas.Count; i++)
+            if (System.Text.RegularExpressions.Regex.IsMatch(linhas[i], @"(^|\s)Id\s") && linhas[i + 1].Trim().StartsWith("---"))
+            { h = i; break; }
+        if (h < 0) return null;
+
+        var colunas = System.Text.RegularExpressions.Regex.Matches(linhas[h], @"\S+").Select(m => m.Index).ToList();
+        int iId = colunas.FindIndex(c => linhas[h][c..].StartsWith("Id"));
+        if (iId < 1 || colunas.Count < iId + 3) return null;
+        int cId = colunas[iId], cVer = colunas[iId + 1], cDisp = colunas[iId + 2];
+        int cFim = colunas.Count > iId + 3 ? colunas[iId + 3] : int.MaxValue;
+
+        string Corte(string l, int de, int ate) => de >= l.Length ? "" : l[de..Math.Min(ate, l.Length)].Trim();
+        var pacotes = new List<PacoteWinget>();
+        for (int j = h + 2; j < linhas.Count; j++)
         {
-            var l = bruta.Trim();
-            var m = cabecalho.Match(l);
-            if (m.Success) { nome = m.Groups[1].Value; id = m.Groups[2].Value; continue; }
-            if (nome is null) continue;
-            if (l.Contains("Successfully installed", StringComparison.OrdinalIgnoreCase) ||
-                l.Contains("instalado com êxito", StringComparison.OrdinalIgnoreCase) ||
-                l.Contains("instalado com sucesso", StringComparison.OrdinalIgnoreCase))
-            {
-                ok.Add(nome); nome = null;
-            }
-            else if (erroHex.Match(l) is { Success: true } e && !l.Contains("hash", StringComparison.OrdinalIgnoreCase))
-            {
-                falhas.Add((nome, id ?? "", e.Value.Trim())); nome = null;
-            }
+            var l = linhas[j];
+            if (string.IsNullOrWhiteSpace(l)) continue;
+            var id = Corte(l, cId, cVer);
+            var versao = Corte(l, cVer, cDisp);
+            var disp = Corte(l, cDisp, cFim);
+            // A linha de rodapé ("2 atualizações disponíveis.") não tem um Id válido nessa coluna.
+            if (!System.Text.RegularExpressions.Regex.IsMatch(id, @"^[\w.+-]{2,}$") || versao.Length == 0 || disp.Length == 0) continue;
+            pacotes.Add(new PacoteWinget(Corte(l, 0, cId), id, versao, disp));
         }
-        return (ok, falhas);
+        return pacotes;
     }
+
+    /// <summary>O que significa cada código do winget, em português.</summary>
+    internal static string ExplicarCodigo(int codigo) => unchecked((uint)codigo) switch
+    {
+        0 => "ok",
+        0x8A15002B => "nenhuma atualização aplicável",
+        0x8A15000F => "a lista de programas do winget está incompleta (rode \"winget source reset --force\" num Terminal como administrador)",
+        0x8A150011 => "o instalador baixado não confere com o esperado (hash diferente); tente de novo mais tarde",
+        0x8A150101 => "o programa está aberto; feche-o e tente de novo",
+        0x8A150102 => "outra instalação já está em andamento",
+        0x8A150103 => "um arquivo do programa está em uso",
+        0x8A150104 => "falta um componente que o programa precisa",
+        0x8A150105 => "falta espaço no disco",
+        0x8A150106 => "falta memória",
+        0x8A150107 => "sem conexão com a internet",
+        0x8A150108 => "o instalador pediu para contatar o suporte do fabricante",
+        0x8A150109 or 0x8A15010A => "precisa reiniciar o PC",
+        0x8A15010C => "a instalação foi cancelada",
+        0x8A15010D => "a versão nova já está instalada",
+        0x8A15010E => "a versão disponível é mais antiga que a instalada",
+        0x8A15010F => "bloqueado por uma política do PC",
+        0xC0000135 => "o winget não consegue rodar como serviço neste PC (falta um componente do Windows; atualize o \"Instalador de Aplicativo\" pela Microsoft Store)",
+        0xFFFFFFFF => "o instalador do programa falhou sem dizer o motivo",
+        _ => "o instalador do programa devolveu um erro",
+    };
 }
 
 // ---------------------------------------------------------------- Otimização de unidades
