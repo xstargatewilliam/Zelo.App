@@ -1105,7 +1105,7 @@
                                                                         <ColumnDefinition Width="*"/>
                                                                         <ColumnDefinition Width="Auto"/>
                                                                     </Grid.ColumnDefinitions>
-                                                                    <TextBox Text="{Binding Texto, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
+                                                                    <TextBox Text="{Binding Texto, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0" MinHeight="0"
                                                                              FontSize="12.5" Foreground="{StaticResource Texto2}" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                                                     <Button Grid.Column="1" Content="Abrir site" Tag="{Binding Link}" Visibility="{Binding VisLink}" Style="{StaticResource BotaoLink}"
                                                                             MinHeight="28" FontSize="12.5" Margin="8,0,0,0" Click="AbrirLink_Click"/>
