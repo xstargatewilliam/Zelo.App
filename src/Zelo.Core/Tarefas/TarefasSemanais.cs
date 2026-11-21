@@ -204,7 +204,7 @@ public sealed class AtualizacaoProgramas : Tarefa
         }
 
         det.AddRange(falhas.Select(f => "FALHOU: " + f));
-        det.AddRange(componentes.Select(c => $"Ignorado: {c.Nome} — componente do Windows, atualizado pela Microsoft Store"));
+        det.AddRange(componentes.Select(c => $"Ignorado: {c.Nome} — o Windows ou a Microsoft atualizam sozinhos"));
         if (falhas.Count > 0)
         {
             det.Add("Os detalhes de cada falha estão em Registro (no menu do Zelo).");
@@ -214,7 +214,15 @@ public sealed class AtualizacaoProgramas : Tarefa
         return Res(StatusTarefa.Ok, $"{ok} programa(s) atualizado(s).", det);
     }
 
-    private static readonly string[] Frameworks = { "Microsoft.VCLibs", "Microsoft.UI.Xaml", "Microsoft.WindowsAppRuntime", "Microsoft.DesktopAppInstaller" };
+    /// <summary>
+    /// Ficam de fora: componentes do Windows (a Loja atualiza), o próprio winget (App Installer: atualizá-lo
+    /// com ele mesmo rodando falha) e o Edge/WebView2 (atualizam sozinhos pelo serviço da Microsoft).
+    /// </summary>
+    internal static readonly string[] Frameworks =
+    {
+        "Microsoft.VCLibs", "Microsoft.UI.Xaml", "Microsoft.WindowsAppRuntime", "Microsoft.DesktopAppInstaller",
+        "Microsoft.AppInstaller", "Microsoft.Edge", "Microsoft.EdgeWebView2Runtime",
+    };
 
     internal static bool InstalouComSucesso(string saida) =>
         saida.Contains("Successfully installed", StringComparison.OrdinalIgnoreCase)

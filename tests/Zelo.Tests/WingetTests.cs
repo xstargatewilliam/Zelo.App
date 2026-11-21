@@ -49,6 +49,14 @@ public class WingetTests
     }
 
     [Fact]
+    public void O_proprio_winget_e_o_Edge_ficam_de_fora()
+    {
+        foreach (var id in new[] { "Microsoft.AppInstaller", "Microsoft.EdgeWebView2Runtime", "Microsoft.Edge", "Microsoft.VCLibs.140.00" })
+            Assert.Contains(AtualizacaoProgramas.Frameworks, f => id.StartsWith(f, StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(AtualizacaoProgramas.Frameworks, f => "Microsoft.PowerShell".StartsWith(f, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Sem_tabela_e_nulo()
     {
         Assert.Null(AtualizacaoProgramas.LerTabela("No installed package found matching input criteria."));
