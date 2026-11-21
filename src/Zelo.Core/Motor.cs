@@ -419,6 +419,10 @@ public sealed class Motor
                         _etapas[i].Segundos = (int)res.Duracao.TotalSeconds;
                     }
                     Registro.Escrever($"   [{res.Status}] {t.Nome}: {res.Resumo} ({res.Duracao.TotalSeconds:0}s)");
+                    // Quando algo não deu certo, o log guarda os detalhes (para entender o porquê depois).
+                    if (res.Status is StatusTarefa.Aviso or StatusTarefa.Critico or StatusTarefa.Erro)
+                        foreach (var d in res.Detalhes.Where(d => !string.IsNullOrWhiteSpace(d)).Take(25))
+                            Registro.Escrever("      · " + d);
                 }
                 catch (OperationCanceledException)
                 {

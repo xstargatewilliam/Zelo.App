@@ -148,7 +148,13 @@ public partial class MainWindow : Window
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (PaginaInicio is null || PaginaHistorico is null || PaginaAjustes is null || PaginaOtimizar is null) return;
+        if (PaginaInicio is null || PaginaHistorico is null || PaginaAjustes is null || PaginaOtimizar is null || PaginaRegistro is null) return;
+        PaginaRegistro.Visibility = NavRegistro.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (NavRegistro.IsChecked == true)
+        {
+            EntrarPagina(ConteudoRegistro);
+            if (!ModoCaptura) AbrirRegistro();
+        }
         PaginaOtimizar.Visibility = NavOtimizar.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (NavOtimizar.IsChecked == true)
         {
@@ -175,6 +181,7 @@ public partial class MainWindow : Window
         Activate();
         if (pagina == "ajustes") NavAjustes.IsChecked = true;
         else if (pagina == "otimizar") NavOtimizar.IsChecked = true;
+        else if (pagina == "registro") NavRegistro.IsChecked = true;
         else if (pagina == "historico") NavHistorico.IsChecked = true;
         else NavInicio.IsChecked = true;
     }
@@ -1245,6 +1252,11 @@ public partial class MainWindow : Window
         await Esperar();
         SalvarPng(this, System.IO.Path.Combine(pasta, "7-otimizar.png"));
         SalvarConteudo(ConteudoOtimizar, System.IO.Path.Combine(pasta, "7b-otimizar-inteiro.png"));
+
+        NavRegistro.IsChecked = true;
+        MontarRegistroDeExemplo();
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "9-registro.png"));
 
         NavInicio.IsChecked = true;
         AbrirBoasVindas();

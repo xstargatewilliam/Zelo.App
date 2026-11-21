@@ -146,6 +146,14 @@
                             <TextBlock Text="Ajustes" Margin="12,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </RadioButton>
+                    <RadioButton x:Name="NavRegistro" GroupName="nav" Style="{StaticResource ItemMenu}" Checked="Nav_Checked" AutomationProperties.Name="Registro">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                  Data="M6,3 L15,3 L19,7 L19,21 L6,21 Z M15,3 L15,7 L19,7 M9,11 L16,11 M9,14.5 L16,14.5 M9,18 L13,18"/>
+                            <TextBlock Text="Registro" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -644,8 +652,11 @@
                                                                     <TextBlock Text="{Binding TextoRisco}" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource Ambar}"/>
                                                                 </Border>
                                                             </StackPanel>
-                                                            <CheckBox Grid.Column="1" Style="{StaticResource Interruptor}" IsChecked="{Binding Selecionado, Mode=TwoWay}" Visibility="{Binding VisInterruptor}"
-                                                                      Click="AjusteOtim_Click" VerticalAlignment="Center" AutomationProperties.Name="{Binding Nome}"/>
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Visibility="{Binding VisInterruptor}">
+                                                                <TextBlock Text="{Binding TextoInterruptor}" FontSize="12.5" Foreground="{StaticResource Suave}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                                <CheckBox Style="{StaticResource Interruptor}" IsChecked="{Binding Selecionado, Mode=TwoWay}"
+                                                                          Click="AjusteOtim_Click" VerticalAlignment="Center" AutomationProperties.Name="{Binding TextoAcessivel}"/>
+                                                            </StackPanel>
                                                             <StackPanel Grid.Column="1" Visibility="{Binding VisEstado}" VerticalAlignment="Center" HorizontalAlignment="Right">
                                                                 <TextBlock Text="{Binding TextoEstado}" FontSize="12.5" Foreground="{StaticResource Aurora}" HorizontalAlignment="Right"/>
                                                                 <Button Content="{Binding TextoDesfazer}" Tag="{Binding Id}" Visibility="{Binding VisDesfazer}" Style="{StaticResource BotaoLink}"
@@ -679,6 +690,40 @@
                             Visibility="Collapsed" Click="OtimDesfazerTudo_Click"/>
                     <Button x:Name="BtnOtimAplicar" Grid.Column="2" Content="Aplicar" Style="{StaticResource BotaoPrimario}" MinWidth="150" Click="OtimAplicar_Click"/>
                 </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ======================= Registro (log) ======================= -->
+        <Grid x:Name="PaginaRegistro" Grid.Column="1" Visibility="Collapsed" Margin="40,32,40,28">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <StackPanel x:Name="ConteudoRegistro">
+                <StackPanel.RenderTransform><TranslateTransform/></StackPanel.RenderTransform>
+                <TextBlock Text="Registro" Style="{StaticResource TTitulo}"/>
+                <TextBlock Text="Tudo o que o Zelo fez, passo a passo, com os detalhes de cada falha. Útil para entender um problema ou mandar para quem for ajudar." Style="{StaticResource TCorpo}" FontSize="15" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Grid Grid.Row="1" Margin="0,18,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="CmbDiaLog" Width="150" MinHeight="36" VerticalContentAlignment="Center" SelectionChanged="DiaLog_Changed" AutomationProperties.Name="Dia do registro"/>
+                <TextBox x:Name="TxtFiltroLog" Grid.Column="1" Margin="10,0,10,0" MinHeight="36" VerticalContentAlignment="Center" Padding="10,0"
+                         TextChanged="FiltroLog_Changed" AutomationProperties.Name="Filtrar o registro" ToolTip="Mostra só as linhas com este texto (ex.: winget, backup, FALHOU)"/>
+                <ToggleButton x:Name="ChkSoProblemas" Grid.Column="2" Style="{StaticResource Ficha}" Content="Só problemas" Click="FiltroLog_Changed" Margin="0,0,10,0"/>
+                <Button Grid.Column="3" Content="Copiar" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Margin="0,0,10,0" Click="CopiarLog_Click"/>
+                <Button Grid.Column="4" Content="Abrir pasta" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Click="AbrirPastaLog_Click"/>
+            </Grid>
+            <Border Grid.Row="2" Style="{StaticResource Cartao}" Padding="0">
+                <TextBox x:Name="TxtLog" IsReadOnly="True" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Texto2}"
+                         FontFamily="Cascadia Mono, Consolas" FontSize="12.5" Padding="16,12" TextWrapping="NoWrap"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="Linhas do registro"/>
             </Border>
         </Grid>
 

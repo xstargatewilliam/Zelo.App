@@ -45,6 +45,14 @@ public sealed class ItemAjuste : INotifyPropertyChanged
     }
 
     public Visibility VisInterruptor => Ativo ? Visibility.Collapsed : Visibility.Visible;
+    /// <summary>O que o interruptor ligado faz, escrito ao lado dele.</summary>
+    public string TextoInterruptor => Def.Tipo switch
+    {
+        TipoAjuste.App => "Remover",
+        TipoAjuste.Programa => "Instalar",
+        _ => "Aplicar",
+    };
+    public string TextoAcessivel => $"{TextoInterruptor}: {Nome}";
     public Visibility VisEstado => Ativo ? Visibility.Visible : Visibility.Collapsed;
     public string TextoEstado =>
         Def.Tipo == TipoAjuste.Programa ? "Instalado"
@@ -93,8 +101,8 @@ public partial class MainWindow
 
     private static readonly Dictionary<string, string> SubGrupos = new()
     {
-        ["Apps que vieram com o Windows"] = "Só aparecem os que estão no seu PC. Todos voltam pela Microsoft Store se você quiser.",
-        ["Programas para instalar"] = "Instalados pelo winget, o gerenciador oficial de programas do Windows, direto do site de cada fabricante.",
+        ["Apps que vieram com o Windows"] = "Ligado = remover. Desligue os que você usa. Só aparecem os que estão no seu PC; todos voltam pela Microsoft Store se você quiser.",
+        ["Programas para instalar"] = "Ligado = instalar. Instalados pelo winget, o gerenciador oficial de programas do Windows, direto do site de cada fabricante.",
         ["Avançado"] = "Mexe em partes sensíveis do Windows sem desligar nenhuma proteção. Nada vem marcado: escolha só o que fizer sentido para você.",
     };
 
