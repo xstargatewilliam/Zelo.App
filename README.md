@@ -51,7 +51,7 @@ Nunca atualiza no meio de uma vistoria ou otimização, e a instalação automá
 | Rotina | Tarefas |
 |---|---|
 | **Vistoria diária** | Atualização do antivírus + verificação rápida · saúde dos discos (SMART: desgaste, temperatura, erros) · espaço livre · erros graves no Visualizador de Eventos (telas azuis, desligamentos inesperados, falhas de disco) · reinicialização pendente · limpeza de temporários antigos · limpeza da pasta Downloads (opcional, só arquivos antigos) · backup incremental (guarda a versão anterior de cada arquivo alterado por 30 dias) |
-| **Revisão semanal** | Ponto de restauração · Windows Update (sem upgrades de versão) · drivers pelo Windows Update (opcional, sem os de vídeo) · placa de vídeo: idade do driver e software do fabricante para atualizar · atualização de programas (winget) · TRIM nos SSDs / desfragmentação só em HDs · Lixeira antiga (desligado por padrão) e cache de navegadores (Chrome, Edge, Firefox, Opera/Opera GX — opcional) · programas novos na inicialização |
+| **Revisão semanal** | Ponto de restauração · Windows Update (sem upgrades de versão) · drivers pelo Windows Update (opcional, sem os de vídeo) · placa de vídeo: idade do driver e software do fabricante para atualizar · atualização de programas (winget, um por vez, até 15 min cada) · TRIM nos SSDs / desfragmentação só em HDs · Lixeira antiga (desligado por padrão) e cache de navegadores (Chrome, Edge, Firefox, Opera/Opera GX — opcional) · programas novos na inicialização |
 | **Check-up mensal** | DISM + SFC · limpeza segura do WinSxS · verificação do sistema de arquivos (sem reiniciar) · auditoria de segurança (firewall, UAC, BitLocker, SMBv1, administradores novos) · verificação completa do antivírus · **teste do backup** (sorteia 25 arquivos e compara por SHA-256; é uma amostra, não a conferência de todos) · saúde da bateria · maiores arquivos · drivers muito antigos |
 
 ### Quando as rotinas rodam
@@ -77,6 +77,10 @@ Na aba **Otimizar**, você escolhe como usa o PC (Jogos, Trabalho, Estudos, Edi�
 - **O que ele faz**: remove apps de propaganda que vieram com o Windows (voltam pela Microsoft Store), tira sugestões e anúncios, reduz a telemetria ao obrigatório, ajusta desempenho e jogos, liga recursos úteis para quem programa e instala programas do perfil pelo winget.
 - **O que ele nunca faz**: desligar o Windows Update, o antivírus, o Firewall ou o Controle de Conta de Usuário; remover a Microsoft Store, o Edge ou partes do sistema; usar scripts de terceiros.
 - A seção **Avançado** mexe em áreas sensíveis sem desligar proteções (ex.: o Windows Update não reiniciar sozinho, verificação do antivírus mais leve, desligar a hibernação). Nada ali vem marcado.
+
+## Registro (log)
+
+A página **Registro**, no menu do Zelo, mostra ao vivo tudo o que o serviço fez no dia: cada vistoria, cada tarefa e, quando algo não dá certo, os detalhes do motivo (por exemplo, o código de erro do winget e o que ele significa). Dá para escolher o dia, filtrar por texto, ver **Só problemas**, **Copiar** para mandar a quem for ajudar e **Abrir pasta**. Os arquivos ficam em `C:\ProgramData\Zelo\logs`, um por dia, por 30 dias.
 
 ## Onde ficam as coisas
 

@@ -722,8 +722,8 @@
             </Grid>
             <Border Grid.Row="2" Style="{StaticResource Cartao}" Padding="0">
                 <TextBox x:Name="TxtLog" IsReadOnly="True" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Texto2}"
-                         FontFamily="Cascadia Mono, Consolas" FontSize="12.5" Padding="16,12" TextWrapping="NoWrap"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="Linhas do registro"/>
+                         FontFamily="Cascadia Mono, Consolas" FontSize="12.5" Padding="16,12" TextWrapping="Wrap" VerticalContentAlignment="Top"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Linhas do registro"/>
             </Border>
         </Grid>
 
