@@ -49,9 +49,14 @@ public static class AppsDaConta
                 if (erro.Length == 0) removidos.Add(i.Str("Nome"));
                 else erros.Add($"{i.Str("Nome")}: {PrimeiraLinha(erro)}");
             }
-        var restam = json.TryGetProperty("Restam", out var r)
-            ? r.Itens().Select(x => x.ValueKind == JsonValueKind.String ? x.GetString() ?? "" : x.ToString()).Where(x => x.Length > 0).Distinct().ToList()
-            : new List<string>();
+        var restam = new List<string>();
+        if (json.TryGetProperty("Restam", out var r))
+        {
+            // O PowerShell 5.1 manda uma lista de um item só como texto solto.
+            var valores = r.ValueKind == JsonValueKind.Array ? r.EnumerateArray().ToList() : new List<JsonElement> { r };
+            restam = valores.Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString() ?? "")
+                .Where(x => x.Length > 0).Distinct().ToList();
+        }
         return new Resultado(restam.Count == 0 && erros.Count == 0, removidos, restam, erros);
     }
 
