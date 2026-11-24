@@ -710,6 +710,7 @@ public static class Otimizador
             : $"{ok} de {ajustes.Count} ajuste(s) aplicado(s)."
               + (Andamento.PontoCriado == false ? " Sem ponto de restauração (você escolheu continuar); cada ajuste ainda pode ser desfeito pelo Zelo." : "");
         Registro.Escrever($"Otimizar: {Andamento.Resultado} Perfis: {string.Join(", ", perfis)}. Falhas: {Andamento.Falhas.Count}.");
+        foreach (var f in Andamento.Falhas) Registro.Escrever("   Otimizar · não aplicado: " + f);
     }
 
     private static async Task DesfazerAsync(List<Ajuste> ajustes, string? sid, CancellationToken ct)
@@ -736,6 +737,7 @@ public static class Otimizador
         }
         Andamento.Resultado = $"{ok} ajuste(s) desfeito(s).";
         Registro.Escrever($"Otimizar: {Andamento.Resultado} Falhas: {Andamento.Falhas.Count}.");
+        foreach (var f in Andamento.Falhas) Registro.Escrever("   Otimizar · não desfeito: " + f);
     }
 
     /// <summary>
