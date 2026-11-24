@@ -84,12 +84,52 @@ public sealed class ItemAjuste : INotifyPropertyChanged
     private void Avisar(string nome) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nome));
 }
 
-public sealed class GrupoAjustes
+public sealed class GrupoAjustes : INotifyPropertyChanged
 {
+    private static readonly Geometry Fechado = Geometry.Parse("M4,2 L9,7 L4,12");
+    private static readonly Geometry Aberto = Geometry.Parse("M2,4 L7,9 L12,4");
+    private bool _expandido = true;
+
     public string Titulo { get; init; } = "";
     public string Sub { get; init; } = "";
-    public Visibility VisSub => Sub.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility VisSub => Sub.Length > 0 && Expandido ? Visibility.Visible : Visibility.Collapsed;
     public List<ItemAjuste> Itens { get; init; } = new();
+    /// <summary>Ajustes do Windows pedem a confirmação de administrador; apps e programas, não.</summary>
+    public bool PedeConfirmacao { get; init; }
+    public Visibility VisEscudo => PedeConfirmacao ? Visibility.Visible : Visibility.Collapsed;
+    public Action<GrupoAjustes>? AoMudar { get; init; }
+
+    public bool Expandido
+    {
+        get => _expandido;
+        set
+        {
+            if (_expandido == value) return;
+            _expandido = value;
+            AoMudar?.Invoke(this);
+            foreach (var n in new[] { nameof(Expandido), nameof(VisItens), nameof(VisSub), nameof(Seta) }) Avisar(n);
+        }
+    }
+
+    public Visibility VisItens => Expandido ? Visibility.Visible : Visibility.Collapsed;
+    public Geometry Seta => Expandido ? Aberto : Fechado;
+
+    public string Contagem
+    {
+        get
+        {
+            int marcados = Itens.Count(i => i.Selecionado && !i.Ativo), feitos = Itens.Count(i => i.Ativo);
+            var partes = new List<string>();
+            if (marcados > 0) partes.Add($"{marcados} marcado(s)");
+            if (feitos > 0) partes.Add($"{feitos} já aplicado(s)");
+            return partes.Count == 0 ? $"{Itens.Count} item(ns)" : string.Join(" · ", partes);
+        }
+    }
+
+    public void Renovar() => Avisar(nameof(Contagem));
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void Avisar(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
 }
 
 public partial class MainWindow
@@ -185,17 +225,51 @@ public partial class MainWindow
         foreach (var a in _ajustes) a.Selecionado = !a.Ativo && a.Def.RecomendadoPara(_perfisUso);
     }
 
+    /// <summary>Os ajustes dos perfis escolhidos: é sobre eles que "Aplicar" age, com ou sem busca e filtro na tela.</summary>
     private IEnumerable<ItemAjuste> Visiveis() =>
         _ajustes.Where(a => ChkTodosPerfis.IsChecked == true || a.Def.Relevante(_perfisUso));
+
+    private string _filtroOtim = "todos";
+    private readonly HashSet<string> _gruposFechados = new();
+    private List<GrupoAjustes> _gruposOtim = new();
+
+    /// <summary>O que aparece na tela: os visíveis, com a busca e o filtro escolhidos.</summary>
+    private IEnumerable<ItemAjuste> NaTela()
+    {
+        var busca = TxtBuscaOtim.Text.Trim();
+        return Visiveis().Where(a =>
+            (_filtroOtim switch
+            {
+                "marcados" => a.Selecionado && !a.Ativo,
+                "aplicados" => a.Ativo,
+                _ => true,
+            })
+            && (busca.Length == 0 || a.Nome.Contains(busca, StringComparison.OrdinalIgnoreCase)
+                || a.Descricao.Contains(busca, StringComparison.OrdinalIgnoreCase) || a.Def.Grupo.Contains(busca, StringComparison.OrdinalIgnoreCase)));
+    }
 
     private void MontarOtimizacao()
     {
         var ordem = CatalogoOtimizacao.Grupos.ToList();
-        ListaOtimizacao.ItemsSource = Visiveis()
+        bool filtrando = TxtBuscaOtim.Text.Trim().Length > 0 || _filtroOtim != "todos";
+        _gruposOtim = NaTela()
             .GroupBy(a => a.Def.Grupo)
             .OrderBy(g => ordem.IndexOf(g.Key))
-            .Select(g => new GrupoAjustes { Titulo = g.Key, Sub = SubGrupos.GetValueOrDefault(g.Key, ""), Itens = g.ToList() })
+            .Select(g =>
+            {
+                var grupo = new GrupoAjustes
+                {
+                    Titulo = g.Key, Sub = SubGrupos.GetValueOrDefault(g.Key, ""), Itens = g.ToList(),
+                    PedeConfirmacao = g.All(i => i.Def.Tipo is not (TipoAjuste.App or TipoAjuste.Programa)),
+                    AoMudar = gr => { if (gr.Expandido) _gruposFechados.Remove(gr.Titulo); else _gruposFechados.Add(gr.Titulo); },
+                };
+                // Buscando ou filtrando, tudo aberto; senão, como a pessoa deixou.
+                grupo.Expandido = filtrando || !_gruposFechados.Contains(g.Key);
+                return grupo;
+            })
             .ToList();
+        ListaOtimizacao.ItemsSource = _gruposOtim;
+        TxtOtimNada.Visibility = _gruposOtim.Count == 0 && _otimCarregado ? Visibility.Visible : Visibility.Collapsed;
         TxtOtimStatus.Text = _perfisUso.Count == 0
             ? "Escolha acima como você usa o PC para ver os ajustes de cada perfil. Abaixo, os que servem para todo mundo."
             : $"Recomendações para: {string.Join(", ", _perfisUso.OrderBy(p => p).Select(NomesPerfil.Perfil))}.";
@@ -204,20 +278,27 @@ public partial class MainWindow
 
     private void AtualizarContagemOtim()
     {
+        foreach (var g in _gruposOtim) g.Renovar();
         var sel = Visiveis().Where(a => a.Selecionado && !a.Ativo).ToList();
-        int sistema = sel.Count(a => a.Def.Tipo != TipoAjuste.Programa);
-        int programas = sel.Count - sistema;
-        BtnOtimAplicar.Content = sel.Count == 0 ? "Nada selecionado" : $"Aplicar {sel.Count}";
+        int apps = sel.Count(a => a.Def.Tipo == TipoAjuste.App);
+        int programas = sel.Count(a => a.Def.Tipo == TipoAjuste.Programa);
+        int sistema = sel.Count - apps - programas;
         BtnOtimAplicar.IsEnabled = sel.Count > 0 && !_otimOcupado && _otimCarregado;
         BtnOtimDesfazerTudo.Visibility = _ajustes.Any(a => a.PeloZelo && a.Def.Tipo is not (TipoAjuste.App or TipoAjuste.Programa))
             ? Visibility.Visible : Visibility.Collapsed;
         BtnOtimDesfazerTudo.IsEnabled = !_otimOcupado;
         var partes = new List<string>();
-        if (sistema > 0) partes.Add($"{sistema} ajuste(s) no Windows");
-        if (programas > 0) partes.Add($"{programas} programa(s) para instalar");
-        TxtOtimResumo.Text = partes.Count == 0 ? "Nada marcado ainda" : string.Join(" · ", partes);
+        if (sistema > 0) partes.Add($"aplicar {sistema} ajuste(s)");
+        if (apps > 0) partes.Add($"remover {apps} grupo(s) de apps");
+        if (programas > 0) partes.Add($"instalar {programas} programa(s)");
+        TxtOtimResumo.Text = partes.Count == 0 ? "Nada marcado ainda" : "Vai " + string.Join(" · ", partes);
+        BtnOtimVerLista.Visibility = sel.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // O escudo avisa antes: estes vão abrir o aviso do Windows (UAC).
+        TxtAplicar.Text = sel.Count == 0 ? "Nada selecionado" : $"Aplicar {sel.Count}";
+        EscudoAplicar.Visibility = sistema > 0 ? Visibility.Visible : Visibility.Collapsed;
+        BtnOtimAplicar.ToolTip = sistema > 0 ? "Os ajustes do Windows pedem a confirmação de administrador (o aviso do UAC)." : "Não pede confirmação de administrador.";
         if (!_otimOcupado)
-            TxtOtimProgresso.Text = sistema > 0 ? "Antes de mudar qualquer coisa, o Zelo cria um ponto de restauração." : "";
+            TxtOtimProgresso.Text = sistema > 0 ? "Antes de mudar o Windows, o Zelo cria um ponto de restauração. O Windows vai pedir sua confirmação." : apps > 0 ? "Os apps saem só da sua conta, sem pedir administrador." : "";
     }
 
     // ================================================================ Interação
@@ -232,6 +313,29 @@ public partial class MainWindow
     }
 
     private void TodosPerfis_Click(object sender, RoutedEventArgs e) => MontarOtimizacao();
+
+    private void BuscaOtim_Changed(object sender, TextChangedEventArgs e)
+    {
+        TxtBuscaOtimDica.Visibility = TxtBuscaOtim.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (_otimCarregado) MontarOtimizacao();
+    }
+
+    private void FiltroOtim_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton b) return;
+        _filtroOtim = (string)b.Tag;
+        foreach (var f in new[] { FiltroOtimTodos, FiltroOtimRecomendados, FiltroOtimAplicados }) f.IsChecked = f == b;
+        MontarOtimizacao();
+    }
+
+    private async void OtimVerLista_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = Visiveis().Where(a => a.Selecionado && !a.Ativo).ToList();
+        if (sel.Count == 0) return;
+        var programas = sel.Where(a => a.Def.Tipo == TipoAjuste.Programa).ToList();
+        var apps = sel.Where(a => a.Def.Tipo == TipoAjuste.App).ToList();
+        await PerguntarAsync("O que está marcado", "Nada muda até você clicar em Aplicar.", Previa(sel.Except(programas).Except(apps).ToList(), apps, programas), "Fechar", null);
+    }
 
     private void AjusteOtim_Click(object sender, RoutedEventArgs e) => AtualizarContagemOtim();
 
