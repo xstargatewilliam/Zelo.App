@@ -235,73 +235,97 @@ public partial class MainWindow
 
     private void AjusteOtim_Click(object sender, RoutedEventArgs e) => AtualizarContagemOtim();
 
+    private static readonly Geometry IconeEscudo = Geometry.Parse("M12,3 L20,6 L20,12 C20,16.5 16.5,19.5 12,21 C7.5,19.5 4,16.5 4,12 L4,6 Z");
+    private static readonly Geometry IconeLixo = Geometry.Parse("M4,7 L20,7 M9,7 L9,4 L15,4 L15,7 M6,7 L7,20 L17,20 L18,7");
+    private static readonly Geometry IconeBaixar = Geometry.Parse("M12,4 L12,16 M7,11 L12,16 L17,11 M5,20 L19,20");
+
+    /// <summary>A prévia do que vai acontecer, agrupada: ajustes do Windows, apps a remover, programas a instalar.</summary>
+    private static List<LinhaResultado> Previa(List<ItemAjuste> windows, List<ItemAjuste> apps, List<ItemAjuste> programas)
+    {
+        var l = new List<LinhaResultado>();
+        if (windows.Count > 0)
+            l.Add(new LinhaResultado
+            {
+                Texto = $"{windows.Count} ajuste(s) no Windows",
+                Detalhe = string.Join(" · ", windows.Select(w => w.Nome)) + "\nAntes, um ponto de restauração. Pede a confirmação de administrador do Windows.",
+                Icone = IconeEscudo, Cor = Cores.Luar, CorFundo = Cores.NeutroFundo,
+            });
+        if (apps.Count > 0)
+            l.Add(new LinhaResultado
+            {
+                Texto = $"Remover {apps.Count} grupo(s) de apps da sua conta",
+                Detalhe = string.Join(" · ", apps.Select(w => w.Nome)) + "\nNão pede administrador. Voltam só pela Microsoft Store.",
+                Icone = IconeLixo, Cor = Cores.Ambar, CorFundo = Cores.AmbarFundo,
+            });
+        if (programas.Count > 0)
+            l.Add(new LinhaResultado
+            {
+                Texto = $"Instalar {programas.Count} programa(s)",
+                Detalhe = string.Join(" · ", programas.Select(w => w.Nome)) + "\nO Windows pode pedir confirmação para alguns.",
+                Icone = IconeBaixar, Cor = Cores.Aurora, CorFundo = Cores.AuroraFundo,
+            });
+        return l;
+    }
+
     private async void OtimAplicar_Click(object sender, RoutedEventArgs e)
     {
         var sel = Visiveis().Where(a => a.Selecionado && !a.Ativo).ToList();
         if (sel.Count == 0) return;
-        var sistema = sel.Where(a => a.Def.Tipo != TipoAjuste.Programa).ToList();
         var programas = sel.Where(a => a.Def.Tipo == TipoAjuste.Programa).ToList();
-        var apps = sistema.Where(a => a.Def.Tipo == TipoAjuste.App).ToList();
-        var windows = sistema.Except(apps).ToList();
+        var apps = sel.Where(a => a.Def.Tipo == TipoAjuste.App).ToList();
+        var windows = sel.Except(programas).Except(apps).ToList();
 
-        var texto = new StringBuilder();
-        if (windows.Count > 0)
-        {
-            texto.AppendLine($"O Zelo vai aplicar {windows.Count} ajuste(s) no Windows.");
-            texto.AppendLine("Antes, ele cria um ponto de restauração (se a Restauração do Sistema estiver desligada, ele a liga no disco C:). Se não conseguir, ele para e pergunta.");
-            texto.AppendLine("O Windows vai pedir a sua confirmação de administrador.");
-        }
-        if (apps.Count > 0)
-            texto.AppendLine($"Vai remover {apps.Count} grupo(s) de apps só da sua conta (não precisa de administrador). Eles não voltam com \"Desfazer\": para tê-los de novo, reinstale pela Microsoft Store (o Zelo abre a página).");
-        if (programas.Count > 0)
-            texto.AppendLine($"Depois, instala: {string.Join(", ", programas.Select(p => p.Nome))}. O Windows pode pedir confirmação para alguns.");
-        texto.AppendLine();
-        texto.Append("Continuar?");
-        if (MessageBox.Show(this, texto.ToString(), "Zelo · Otimizar", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (!await PerguntarAsync("Aplicar o que você marcou?", "Confira o que vai acontecer. Cada ajuste do Windows pode ser desfeito depois.",
+                Previa(windows, apps, programas), $"Aplicar {sel.Count}")) return;
 
         _otimOcupado = true;
         AtualizarContagemOtim();
-        var falhas = new List<string>();
+        var linhas = new List<LinhaResultado>();
         var resumo = new List<string>();
+        bool cancelado = false;
         try
         {
-            var pedido = new Pedido
-            {
-                Comando = "otimizar-aplicar",
-                Ids = windows.Select(a => a.Id).ToList(),
-                PerfisUso = _perfisUso.ToList(),
-            };
+            // 1) Ajustes do Windows, pelo serviço, com a confirmação do Windows.
             if (windows.Count > 0)
             {
+                var pedido = new Pedido { Comando = "otimizar-aplicar", Ids = windows.Select(a => a.Id).ToList(), PerfisUso = _perfisUso.ToList() };
                 TxtOtimProgresso.Text = "Esperando a sua confirmação no aviso do Windows…";
                 var r = await Elevacao.EnviarAsync(pedido);
+                AndamentoOtimizacao? fim = null;
+                if (r.Ok) fim = await AcompanharAsync();
+                if (r.Ok && fim is { PontoFalhou: true })
+                {
+                    var continuar = await PerguntarAsync("O ponto de restauração não foi criado",
+                        "O Windows não deixou criar o ponto, então nada foi mudado ainda. Cada ajuste continua podendo ser desfeito pelo Zelo, mas sem o ponto não dá para voltar o PC inteiro de uma vez.",
+                        null, "Continuar sem o ponto", "Não aplicar", TomDialogo.Atencao);
+                    if (continuar)
+                    {
+                        pedido.SemPontoRestauracao = true;
+                        r = await Elevacao.EnviarAsync(pedido);
+                        fim = r.Ok ? await AcompanharAsync() : null;
+                    }
+                    else
+                    {
+                        fim = null;
+                        linhas.Add(LinhaResultado.Info("Ajustes do Windows não aplicados", "Você escolheu não continuar sem o ponto de restauração."));
+                    }
+                }
                 if (!r.Ok)
                 {
-                    TxtOtimProgresso.Text = "Nada foi alterado.";
-                    Aviso(r.Mensagem ?? "Não deu certo.");
-                    return;
-                }
-                var fim = await AcompanharAsync();
-                if (fim is { PontoFalhou: true })
-                {
-                    // Sem ponto de restauração, nada foi mudado: a pessoa decide.
-                    var continuar = MessageBox.Show(this,
-                        "O Windows não deixou criar o ponto de restauração, então o Zelo não mudou nada.\n\n" +
-                        "Cada ajuste ainda pode ser desfeito pelo próprio Zelo, mas sem o ponto de restauração não há como voltar o PC inteiro de uma vez.\n\n" +
-                        "Continuar mesmo assim?", "Zelo · Otimizar", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
-                    if (!continuar) { TxtOtimProgresso.Text = "Nada foi alterado."; return; }
-                    pedido.SemPontoRestauracao = true;
-                    r = await Elevacao.EnviarAsync(pedido);
-                    if (!r.Ok) { Aviso(r.Mensagem ?? "Não deu certo."); return; }
-                    fim = await AcompanharAsync();
+                    cancelado = true;
+                    linhas.Add(LinhaResultado.Falhou("Ajustes do Windows não aplicados", r.Mensagem ?? "Não deu certo."));
                 }
                 if (fim is not null)
                 {
                     if (fim.Resultado is not null) resumo.Add(fim.Resultado);
-                    falhas.AddRange(fim.Falhas);
+                    foreach (var it in fim.Itens)
+                        linhas.Add(it.Ok
+                            ? LinhaResultado.Certo(it.Nome, it.Motivo)
+                            : LinhaResultado.Falhou(it.Nome, it.Motivo, it.AbrirManual is null ? "" : "Fazer à mão", it.AbrirManual is null ? "" : "abrir:" + it.AbrirManual));
                 }
             }
 
+            // 2) Apps da Loja, na conta da própria pessoa (sem administrador).
             int removidos = 0, n = 0;
             foreach (var app in apps)
             {
@@ -315,39 +339,51 @@ public partial class MainWindow
                     if (res.Ok)
                     {
                         removidos++;
+                        linhas.Add(LinhaResultado.Certo("Removido: " + app.Nome));
                         await RegistrarAsync($"Otimizar: {app.Nome} removido ({string.Join(", ", res.Removidos)}).");
                     }
                     else
                     {
                         var motivo = res.Erros.Count > 0 ? string.Join("; ", res.Erros)
-                            : $"o Windows não removeu {string.Join(", ", res.Restam)} (alguns apps do sistema não podem ser removidos)";
-                        falhas.Add($"{app.Nome}: {motivo}");
+                            : $"O Windows manteve {string.Join(", ", res.Restam)}: alguns apps do sistema não podem ser removidos.";
+                        linhas.Add(LinhaResultado.Falhou(app.Nome, motivo, "Ver apps instalados", "abrir:ms-settings:appsfeatures"));
                         await RegistrarAsync($"Otimizar: {app.Nome} não removido: {motivo}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    falhas.Add($"{app.Nome}: {ex.Message}");
+                    linhas.Add(LinhaResultado.Falhou(app.Nome, ex.Message));
                     await RegistrarAsync($"Otimizar: erro ao remover {app.Nome}: {ex.Message}");
                 }
             }
             if (apps.Count > 0) resumo.Add($"{removidos} de {apps.Count} grupo(s) de apps removido(s).");
 
-            int i = 0, instalados = 0;
+            // 3) Programas, pelo winget, na conta da pessoa.
+            int instalados = 0, i = 0;
             foreach (var p in programas)
             {
                 i++;
                 TxtOtimProgresso.Text = $"Instalando {p.Nome} ({i} de {programas.Count})… pode levar alguns minutos.";
+                await RegistrarAsync($"Otimizar: instalando {p.Nome} [{p.Def.WingetId}].");
                 var (codigo, saida) = await WingetAsync(
                     $"install --id {p.Def.WingetId} -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --source winget", 30);
-                if (WingetDeuCerto(codigo)) instalados++;
-                else falhas.Add($"{p.Nome}: {ResumoWinget(codigo, saida)}");
+                if (WingetDeuCerto(codigo))
+                {
+                    instalados++;
+                    linhas.Add(LinhaResultado.Certo("Instalado: " + p.Nome));
+                }
+                else
+                {
+                    var motivo = ResumoWinget(codigo, saida);
+                    linhas.Add(LinhaResultado.Falhou(p.Nome, motivo));
+                    await RegistrarAsync($"Otimizar: {p.Nome} não instalado: {motivo}");
+                }
             }
             if (programas.Count > 0) resumo.Add($"{instalados} de {programas.Count} programa(s) instalado(s).");
         }
         catch (Exception ex)
         {
-            falhas.Add(ex.Message);
+            linhas.Add(LinhaResultado.Falhou("Erro inesperado", ex.Message));
         }
         finally
         {
@@ -355,18 +391,22 @@ public partial class MainWindow
         }
 
         TxtOtimProgresso.Text = string.Join(" ", resumo);
-        var msg = string.Join("\n", resumo);
-        if (falhas.Count > 0) msg += "\n\nNão deu certo:\n• " + string.Join("\n• ", falhas);
-        bool explorer = sistema.Any(a => a.Def.ReiniciarExplorer);
-        if (sistema.Any(a => a.Def.Aviso?.Contains("reiniciar", StringComparison.OrdinalIgnoreCase) == true))
-            msg += "\n\nAlguns ajustes só valem depois de reiniciar o PC.";
+        int falhas = linhas.Count(l => l.Cor == Cores.Coral);
+        // Falhas primeiro: é o que pede atenção.
+        linhas = linhas.OrderBy(l => l.Cor == Cores.Coral ? 0 : l.Cor == Cores.Luar ? 1 : 2).ToList();
+        if (windows.Any(a => a.Def.Aviso?.Contains("reiniciar", StringComparison.OrdinalIgnoreCase) == true) && !cancelado)
+            linhas.Add(LinhaResultado.Info("Alguns ajustes só valem depois de reiniciar o PC"));
+        bool explorer = !cancelado && windows.Any(a => a.Def.ReiniciarExplorer) && linhas.Any(l => l.Cor == Cores.Aurora);
+        var titulo = falhas == 0 ? "Pronto" : falhas == linhas.Count ? "Não deu certo" : $"Feito, com {falhas} item(ns) que não deram certo";
+        var texto = string.Join(" ", resumo)
+                    + (explorer ? " Alguns ajustes aparecem depois de reiniciar o Explorador de Arquivos (as janelas de pastas abertas fecham)." : "");
+        var tom = falhas == 0 ? TomDialogo.Sucesso : TomDialogo.Atencao;
         if (explorer)
         {
-            msg += "\n\nAlguns ajustes aparecem depois de reiniciar o Explorador de Arquivos (as janelas de pastas abertas vão fechar). Reiniciar agora?";
-            if (MessageBox.Show(this, msg.Trim(), "Zelo · Otimizar", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+            if (await PerguntarAsync(titulo, texto, linhas, "Reiniciar o Explorador", "Depois", tom))
                 await ReiniciarExplorerAsync();
         }
-        else Aviso(msg.Trim());
+        else await PerguntarAsync(titulo, texto, linhas, "Fechar", null, tom);
 
         await CarregarOtimizacaoAsync();
     }
@@ -379,7 +419,7 @@ public partial class MainWindow
 
         if (item.Def.Tipo == TipoAjuste.Programa)
         {
-            if (MessageBox.Show(this, $"Desinstalar {item.Nome}?", "Zelo · Otimizar", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            if (!await PerguntarAsync($"Desinstalar {item.Nome}?", "O programa sai do PC. Dá para instalar de novo por aqui quando quiser.", null, "Desinstalar")) return;
             _otimOcupado = true;
             AtualizarContagemOtim();
             TxtOtimProgresso.Text = $"Desinstalando {item.Nome}…";
@@ -409,9 +449,8 @@ public partial class MainWindow
     {
         var ids = _ajustes.Where(a => a.PeloZelo && a.Def.Tipo is not (TipoAjuste.App or TipoAjuste.Programa)).Select(a => a.Id).ToList();
         if (ids.Count == 0) return;
-        if (MessageBox.Show(this,
-                $"Voltar {ids.Count} ajuste(s) feitos pelo Zelo para como estavam antes?\n\nApps removidos e programas instalados ficam como estão (cada um tem o próprio botão).",
-                "Zelo · Otimizar", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (!await PerguntarAsync($"Voltar {ids.Count} ajuste(s) para como estavam?",
+                "Apps removidos e programas instalados ficam como estão: cada um tem o próprio botão.", null, "Desfazer tudo")) return;
         await DesfazerAsync(ids);
     }
 
@@ -424,8 +463,12 @@ public partial class MainWindow
             var r = await Elevacao.EnviarAsync(new Pedido { Comando = "otimizar-desfazer", Ids = ids });
             if (!r.Ok) { Aviso(r.Mensagem ?? "Não deu certo."); return; }
             var fim = await AcompanharAsync();
-            if (fim is { Falhas.Count: > 0 }) Aviso("Não deu certo:\n• " + string.Join("\n• ", fim.Falhas));
             TxtOtimProgresso.Text = fim?.Resultado ?? "";
+            if (fim is { Falhas.Count: > 0 })
+                await PerguntarAsync("Alguns ajustes não voltaram", fim.Resultado ?? "",
+                    fim.Itens.Select(it => it.Ok ? LinhaResultado.Certo("Desfeito: " + it.Nome) : LinhaResultado.Falhou(it.Nome, it.Motivo)).ToList(),
+                    "Fechar", null, TomDialogo.Atencao);
+            else if (fim is not null) Notificar(fim.Resultado ?? "Desfeito.");
         }
         catch (Exception ex) { Aviso("Não foi possível falar com o serviço do Zelo: " + ex.Message); }
         finally { _otimOcupado = false; }

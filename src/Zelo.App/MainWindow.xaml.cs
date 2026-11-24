@@ -632,10 +632,10 @@ public partial class MainWindow : Window
         bool sim = partes.Length > 1;
         if (!sim)
         {
-            var aviso = rotina == Rotina.Mensal
-                ? "O check-up mensal pode levar algumas horas (repara arquivos do Windows e confere o disco). O PC pode ficar mais lento enquanto isso.\n\nComeçar agora?"
-                : "A revisão semanal instala atualizações do Windows e dos seus programas, e pode pedir para reiniciar no final.\n\nComeçar agora?";
-            if (MessageBox.Show(this, aviso, "Zelo", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            var (titulo, texto) = rotina == Rotina.Mensal
+                ? ("Começar o check-up mensal agora?", "Pode levar algumas horas: repara arquivos do Windows e confere o disco. O PC pode ficar mais lento enquanto isso.")
+                : ("Começar a revisão semanal agora?", "Instala atualizações do Windows e dos seus programas, um por vez, e pode pedir para reiniciar no final.");
+            if (!await PerguntarAsync(titulo, texto, null, "Começar agora")) return;
         }
         await ExecutarRotina(rotina, sim);
     }
@@ -721,7 +721,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Aviso(string texto) => MessageBox.Show(this, texto, "Zelo", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private static void Abrir(string alvo)
     {

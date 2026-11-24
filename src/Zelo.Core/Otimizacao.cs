@@ -26,6 +26,8 @@ public sealed class Ajuste
     public string? Aviso { get; init; }
     /// <summary>Onde a pessoa faz isso à mão, se o Windows não deixar programas mudarem.</summary>
     public string? ComoFazerManual { get; init; }
+    /// <summary>Endereço que abre esse lugar do Windows (ms-settings:…).</summary>
+    public string? AbrirManual { get; init; }
     public TipoAjuste Tipo { get; init; }
     public RiscoAjuste Risco { get; init; } = RiscoAjuste.Baixo;
     /// <summary>Perfis para os quais o ajuste faz sentido. Vazio = todos.</summary>
@@ -75,10 +77,23 @@ public sealed class AndamentoOtimizacao
     public int Total { get; set; }
     public string? Resultado { get; set; }
     public List<string> Falhas { get; set; } = new();
+    /// <summary>O resultado de cada ajuste, para o painel mostrar item por item.</summary>
+    public List<ResultadoAjuste> Itens { get; set; } = new();
     public bool? PontoCriado { get; set; }
     /// <summary>O ponto de restauração falhou e nada foi alterado (a pessoa decide se continua).</summary>
     public bool PontoFalhou { get; set; }
     public DateTime? Fim { get; set; }
+}
+
+public sealed class ResultadoAjuste
+{
+    public string Id { get; set; } = "";
+    public string Nome { get; set; } = "";
+    public bool Ok { get; set; }
+    /// <summary>Por que não deu certo (vazio quando deu), ou um detalhe como "já estava assim".</summary>
+    public string Motivo { get; set; } = "";
+    /// <summary>Onde a pessoa faz isso à mão, quando o Windows não deixa (ex.: ms-settings:taskbar).</summary>
+    public string? AbrirManual { get; set; }
 }
 
 public sealed class AplicacaoAjuste
@@ -262,6 +277,7 @@ public static class CatalogoOtimizacao
             Descricao = "Some o painel de notícias, clima e anúncios que abre ao passar o mouse.",
             Aviso = "Em versões recentes do Windows 11, o próprio Windows bloqueia essa mudança por programas. Se acontecer, o Zelo mostra onde desligar à mão.",
             ComoFazerManual = "Configurações → Personalização → Barra de tarefas → desligue \"Widgets\"",
+            AbrirManual = "ms-settings:taskbar",
             Valores = new[]
             {
                 new ValorReg(@"HKLM\SOFTWARE\Policies\Microsoft\Dsh", "AllowNewsAndInterests", 0),
@@ -666,7 +682,13 @@ public static class Otimizador
             try
             {
                 var situacao = await LerAsync(a, sid, apps, ct);
-                if (situacao == SituacaoAjuste.Ativo) { ok++; continue; }
+                if (situacao == SituacaoAjuste.Ativo)
+                {
+                    ok++;
+                    Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = true, Motivo = "Já estava assim." });
+                    Andamento.Feitos++;
+                    continue;
+                }
                 if (situacao == SituacaoAjuste.Indisponivel) throw new InvalidOperationException("não se aplica a este PC.");
 
                 // Diário: primeiro anota como estava, depois muda, confere e só então marca como concluído.
@@ -699,10 +721,14 @@ public static class Otimizador
                 reg.Aplicados[chave].Concluido = true;
                 Salvar(reg);
                 ok++;
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = true });
             }
             catch (Exception ex)
             {
-                Andamento.Falhas.Add($"{a.Nome}: {Explicar(a, ex)}");
+                var motivo = Explicar(a, ex);
+                Andamento.Falhas.Add($"{a.Nome}: {motivo}");
+                bool protegido = ex is UnauthorizedAccessException || ex.Message.Contains("unauthorized operation", StringComparison.OrdinalIgnoreCase);
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = false, Motivo = motivo, AbrirManual = protegido ? a.AbrirManual : null });
             }
             Andamento.Feitos++;
         }
@@ -728,10 +754,12 @@ public static class Otimizador
                 reg.Aplicados.Remove(chave);
                 Salvar(reg);
                 ok++;
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = true });
             }
             catch (Exception ex)
             {
                 Andamento.Falhas.Add($"{a.Nome}: {Limpar(ex.Message)}");
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = false, Motivo = Limpar(ex.Message) });
             }
             Andamento.Feitos++;
         }
