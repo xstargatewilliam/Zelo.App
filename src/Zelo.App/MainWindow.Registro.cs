@@ -86,7 +86,9 @@ public partial class MainWindow
     {
         IEnumerable<string> l = _linhasLog;
         var filtro = TxtFiltroLog.Text.Trim();
-        if (ChkSoProblemas.IsChecked == true) l = l.Where(x => MarcasDeProblema.Any(m => x.Contains(m)));
+        // Linhas de tarefas que deram certo ficam de fora mesmo com "erro" no texto ("10 erros comuns, nada grave").
+        if (ChkSoProblemas.IsChecked == true)
+            l = l.Where(x => !x.Contains("[Ok]") && !x.Contains("[Ignorada]") && MarcasDeProblema.Any(m => x.Contains(m)));
         if (filtro.Length > 0) l = l.Where(x => x.Contains(filtro, StringComparison.OrdinalIgnoreCase));
         return l;
     }

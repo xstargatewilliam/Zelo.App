@@ -290,6 +290,12 @@ public sealed class ServidorPipe : BackgroundService
                 });
                 return new Resposta { Mensagem = $"Tentando de novo: {tarefa.Nome}." };
 
+            case "registrar":
+                // O painel não escreve na pasta de dados (protegida): manda as linhas para o serviço gravar.
+                var texto = (p.Motivo ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
+                if (texto.Length > 0) Registro.Escrever("Painel: " + (texto.Length > 400 ? texto[..400] + "…" : texto));
+                return new Resposta();
+
             case "pausar":
                 var minutos = Math.Clamp(p.Minutos, 0, 24 * 60);
                 Pausa.Definir(TimeSpan.FromMinutes(minutos));

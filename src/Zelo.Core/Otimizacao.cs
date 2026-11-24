@@ -24,6 +24,8 @@ public sealed class Ajuste
     public string Descricao { get; init; } = "";
     /// <summary>Algo que a pessoa precisa saber antes (ex.: só vale depois de reiniciar).</summary>
     public string? Aviso { get; init; }
+    /// <summary>Onde a pessoa faz isso à mão, se o Windows não deixar programas mudarem.</summary>
+    public string? ComoFazerManual { get; init; }
     public TipoAjuste Tipo { get; init; }
     public RiscoAjuste Risco { get; init; } = RiscoAjuste.Baixo;
     /// <summary>Perfis para os quais o ajuste faz sentido. Vazio = todos.</summary>
@@ -258,6 +260,8 @@ public static class CatalogoOtimizacao
         {
             Id = "priv-widgets", Grupo = GPriv, Nome = "Tirar Widgets e notícias da barra de tarefas", Tipo = TipoAjuste.Registro, Recomendado = true, ReiniciarExplorer = true,
             Descricao = "Some o painel de notícias, clima e anúncios que abre ao passar o mouse.",
+            Aviso = "Em versões recentes do Windows 11, o próprio Windows bloqueia essa mudança por programas. Se acontecer, o Zelo mostra onde desligar à mão.",
+            ComoFazerManual = "Configurações → Personalização → Barra de tarefas → desligue \"Widgets\"",
             Valores = new[]
             {
                 new ValorReg(@"HKLM\SOFTWARE\Policies\Microsoft\Dsh", "AllowNewsAndInterests", 0),
@@ -605,7 +609,8 @@ public static class Otimizador
 
     public static string? Iniciar(List<string> ids, List<PerfilUso> perfis, string? sid, bool desfazer, bool semPonto, CancellationToken ct)
     {
-        var ajustes = ids.Distinct().Select(CatalogoOtimizacao.Por).Where(a => a is not null && a.Tipo != TipoAjuste.Programa).Select(a => a!).ToList();
+        // Apps da Loja e programas são feitos pelo painel, na conta da própria pessoa (não pelo serviço).
+        var ajustes = ids.Distinct().Select(CatalogoOtimizacao.Por).Where(a => a is not null && a.Tipo is not (TipoAjuste.Programa or TipoAjuste.App)).Select(a => a!).ToList();
         if (ajustes.Any(PorUsuario) && !SidValido(sid)) return "Não foi possível identificar a sua conta do Windows.";
         if (!Coordenador.Iniciar("otimizacao")) return Coordenador.Explicar();
         Andamento = new AndamentoOtimizacao { Rodando = true, Desfazendo = desfazer, Total = ajustes.Count, Etapa = "Começando" };
@@ -697,7 +702,7 @@ public static class Otimizador
             }
             catch (Exception ex)
             {
-                Andamento.Falhas.Add($"{a.Nome}: {Limpar(ex.Message)}");
+                Andamento.Falhas.Add($"{a.Nome}: {Explicar(a, ex)}");
             }
             Andamento.Feitos++;
         }
@@ -985,4 +990,13 @@ public static class Otimizador
         s.Split('\n', '\r').Select(l => l.Trim()).LastOrDefault(l => l.Length > 0) ?? "";
 
     private static string Limpar(string s) => s.StartsWith("ERRO: ") ? s[6..] : s;
+
+    /// <summary>Erro em linguagem simples; quando o Windows protege a configuração, diz onde fazer à mão.</summary>
+    internal static string Explicar(Ajuste a, Exception ex)
+    {
+        if (ex is UnauthorizedAccessException || ex.Message.Contains("unauthorized operation", StringComparison.OrdinalIgnoreCase))
+            return "o próprio Windows protege esta configuração e não deixa programas mudarem"
+                   + (a.ComoFazerManual is { } m ? $". Faça à mão: {m}." : ".");
+        return Limpar(ex.Message);
+    }
 }

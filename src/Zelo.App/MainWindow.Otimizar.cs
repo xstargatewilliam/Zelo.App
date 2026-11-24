@@ -151,6 +151,7 @@ public partial class MainWindow
     private void MontarItens(List<EstadoAjuste> estados, Dictionary<string, bool?>? instalados = null)
     {
         var porId = estados.ToDictionary(e => e.Id);
+        var removidos = AppsDaConta.Removidos();
         _ajustes.Clear();
         foreach (var def in CatalogoOtimizacao.Todos)
         {
@@ -159,7 +160,17 @@ public partial class MainWindow
                 item.Instalado = instalados?.GetValueOrDefault(def.Id);
             else
             {
-                if (!porId.TryGetValue(def.Id, out var e) || e.Situacao == SituacaoAjuste.Indisponivel) continue;
+                porId.TryGetValue(def.Id, out var e);
+                // App que o Zelo removeu desta conta: não aparece mais instalado, mas fica na lista para reinstalar.
+                if (def.Tipo == TipoAjuste.App && removidos.TryGetValue(def.Id, out var quando) && e?.Situacao != SituacaoAjuste.Padrao)
+                {
+                    item.Situacao = SituacaoAjuste.Ativo;
+                    item.PeloZelo = true;
+                    item.Quando = quando;
+                    _ajustes.Add(item);
+                    continue;
+                }
+                if (e is null || e.Situacao == SituacaoAjuste.Indisponivel) continue;
                 item.Situacao = e.Situacao;
                 item.PeloZelo = e.PeloZelo;
                 item.Quando = e.Quando;
@@ -230,16 +241,18 @@ public partial class MainWindow
         if (sel.Count == 0) return;
         var sistema = sel.Where(a => a.Def.Tipo != TipoAjuste.Programa).ToList();
         var programas = sel.Where(a => a.Def.Tipo == TipoAjuste.Programa).ToList();
+        var apps = sistema.Where(a => a.Def.Tipo == TipoAjuste.App).ToList();
+        var windows = sistema.Except(apps).ToList();
 
         var texto = new StringBuilder();
-        if (sistema.Count > 0)
+        if (windows.Count > 0)
         {
-            texto.AppendLine($"O Zelo vai aplicar {sistema.Count} ajuste(s) no Windows.");
+            texto.AppendLine($"O Zelo vai aplicar {windows.Count} ajuste(s) no Windows.");
             texto.AppendLine("Antes, ele cria um ponto de restauração (se a Restauração do Sistema estiver desligada, ele a liga no disco C:). Se não conseguir, ele para e pergunta.");
             texto.AppendLine("O Windows vai pedir a sua confirmação de administrador.");
-            int apps = sistema.Count(a => a.Def.Tipo == TipoAjuste.App);
-            if (apps > 0) texto.AppendLine($"{apps} item(ns) removem apps só da sua conta. Eles não voltam com \"Desfazer\": para tê-los de novo, reinstale pela Microsoft Store (o Zelo abre a página).");
         }
+        if (apps.Count > 0)
+            texto.AppendLine($"Vai remover {apps.Count} grupo(s) de apps só da sua conta (não precisa de administrador). Eles não voltam com \"Desfazer\": para tê-los de novo, reinstale pela Microsoft Store (o Zelo abre a página).");
         if (programas.Count > 0)
             texto.AppendLine($"Depois, instala: {string.Join(", ", programas.Select(p => p.Nome))}. O Windows pode pedir confirmação para alguns.");
         texto.AppendLine();
@@ -255,19 +268,19 @@ public partial class MainWindow
             var pedido = new Pedido
             {
                 Comando = "otimizar-aplicar",
-                Ids = sistema.Select(a => a.Id).ToList(),
+                Ids = windows.Select(a => a.Id).ToList(),
                 PerfisUso = _perfisUso.ToList(),
             };
-            TxtOtimProgresso.Text = "Esperando a sua confirmação no aviso do Windows…";
-            var r = await Elevacao.EnviarAsync(pedido);
-            if (!r.Ok)
+            if (windows.Count > 0)
             {
-                TxtOtimProgresso.Text = "Nada foi alterado.";
-                Aviso(r.Mensagem ?? "Não deu certo.");
-                return;
-            }
-            if (sistema.Count > 0)
-            {
+                TxtOtimProgresso.Text = "Esperando a sua confirmação no aviso do Windows…";
+                var r = await Elevacao.EnviarAsync(pedido);
+                if (!r.Ok)
+                {
+                    TxtOtimProgresso.Text = "Nada foi alterado.";
+                    Aviso(r.Mensagem ?? "Não deu certo.");
+                    return;
+                }
                 var fim = await AcompanharAsync();
                 if (fim is { PontoFalhou: true })
                 {
@@ -288,6 +301,37 @@ public partial class MainWindow
                     falhas.AddRange(fim.Falhas);
                 }
             }
+
+            int removidos = 0, n = 0;
+            foreach (var app in apps)
+            {
+                n++;
+                TxtOtimProgresso.Text = $"Removendo {app.Nome} ({n} de {apps.Count})…";
+                await RegistrarAsync($"Otimizar: removendo {app.Nome} ({string.Join(", ", app.Def.Pacotes)}) da conta {Environment.UserName}.");
+                try
+                {
+                    var res = await AppsDaConta.RemoverAsync(app.Def, CancellationToken.None);
+                    if (res.Removidos.Count > 0 || res.Ok) AppsDaConta.Marcar(app.Id, true);
+                    if (res.Ok)
+                    {
+                        removidos++;
+                        await RegistrarAsync($"Otimizar: {app.Nome} removido ({string.Join(", ", res.Removidos)}).");
+                    }
+                    else
+                    {
+                        var motivo = res.Erros.Count > 0 ? string.Join("; ", res.Erros)
+                            : $"o Windows não removeu {string.Join(", ", res.Restam)} (alguns apps do sistema não podem ser removidos)";
+                        falhas.Add($"{app.Nome}: {motivo}");
+                        await RegistrarAsync($"Otimizar: {app.Nome} não removido: {motivo}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    falhas.Add($"{app.Nome}: {ex.Message}");
+                    await RegistrarAsync($"Otimizar: erro ao remover {app.Nome}: {ex.Message}");
+                }
+            }
+            if (apps.Count > 0) resumo.Add($"{removidos} de {apps.Count} grupo(s) de apps removido(s).");
 
             int i = 0, instalados = 0;
             foreach (var p in programas)
@@ -351,6 +395,12 @@ public partial class MainWindow
         {
             // Reinstalar pede a conta da pessoa na Loja; o Zelo abre a busca.
             Abrir("ms-windows-store://search/?query=" + Uri.EscapeDataString(item.Def.BuscaLoja ?? item.Nome));
+            if (AppsDaConta.Removidos().ContainsKey(id))
+            {
+                AppsDaConta.Marcar(id, false);
+                await CarregarOtimizacaoAsync();
+                return;
+            }
         }
         await DesfazerAsync(new List<string> { id });
     }
@@ -380,6 +430,12 @@ public partial class MainWindow
         catch (Exception ex) { Aviso("Não foi possível falar com o serviço do Zelo: " + ex.Message); }
         finally { _otimOcupado = false; }
         await CarregarOtimizacaoAsync();
+    }
+
+    /// <summary>Manda uma linha para o Registro do Zelo (a pasta do log só aceita escrita do serviço).</summary>
+    private static async Task RegistrarAsync(string linha)
+    {
+        try { await ClientePipe.EnviarAsync(new Pedido { Comando = "registrar", Motivo = linha }); } catch { }
     }
 
     /// <summary>Mostra o progresso do serviço até ele terminar.</summary>
