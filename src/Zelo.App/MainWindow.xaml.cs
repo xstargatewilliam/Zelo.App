@@ -245,6 +245,7 @@ public partial class MainWindow : Window
         if (e.PausadoAte is { } ate) TxtPausa.Text = $"Vistorias automáticas pausadas até {ate:HH:mm}.";
 
         bool rodando = e.RotinaAtual is not null;
+        MostrarFaixa(e, rodando);
         HeroNormal.Visibility = rodando ? Visibility.Collapsed : Visibility.Visible;
         HeroCuidando.Visibility = rodando ? Visibility.Visible : Visibility.Collapsed;
         SecaoEtapas.Visibility = rodando ? Visibility.Visible : Visibility.Collapsed;
@@ -465,6 +466,31 @@ public partial class MainWindow : Window
         TxtJanela.Text = DescreverJanela(_config, e.Perfil);
     }
 
+    /// <summary>Uma linha no topo do Início: quando é a próxima vistoria e se há versão nova esperando.</summary>
+    private void MostrarFaixa(EstadoServico e, bool rodando)
+    {
+        if (rodando || e.PausadoAte is not null) { FaixaInfo.Visibility = Visibility.Collapsed; return; }
+        var partes = new List<string>();
+        var proximas = new[] { Rotina.Diaria, Rotina.Semanal, Rotina.Mensal }
+            .Select(r => (r, quando: e.Proxima.TryGetValue(r.ToString(), out var d) ? d : (DateTime?)null))
+            .Where(x => x.quando is not null)
+            .OrderBy(x => x.quando)
+            .ToList();
+        if (proximas.Count > 0)
+        {
+            var (r, quando) = proximas[0];
+            var nome = Palavras.Rotina(r).ToLowerInvariant();
+            partes.Add(quando <= DateTime.Now
+                ? (e.DentroDaJanela ? $"Próxima: {nome}, assim que o PC estiver livre." : $"Próxima: {nome}, no próximo horário livre do seu perfil.")
+                : $"Próxima: {nome}, {Palavras.Quando(quando)}.");
+        }
+        bool versao = e.VersaoDisponivel is not null;
+        if (versao) partes.Add($"Versão {e.VersaoDisponivel} disponível: instala sozinha no próximo horário livre.");
+        TxtFaixa.Text = string.Join("  ·  ", partes);
+        BtnFaixaAtualizar.Visibility = versao ? Visibility.Visible : Visibility.Collapsed;
+        FaixaInfo.Visibility = partes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private static string DescreverJanela(Configuracao? c, string perfil) => perfil switch
     {
         "Trabalho" when c is not null => c.DiasExpediente.Count == 0
@@ -632,10 +658,10 @@ public partial class MainWindow : Window
         bool sim = partes.Length > 1;
         if (!sim)
         {
-            var aviso = rotina == Rotina.Mensal
-                ? "O check-up mensal pode levar algumas horas (repara arquivos do Windows e confere o disco). O PC pode ficar mais lento enquanto isso.\n\nComeçar agora?"
-                : "A revisão semanal instala atualizações do Windows e dos seus programas, e pode pedir para reiniciar no final.\n\nComeçar agora?";
-            if (MessageBox.Show(this, aviso, "Zelo", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            var (titulo, texto) = rotina == Rotina.Mensal
+                ? ("Começar o check-up mensal agora?", "Pode levar algumas horas: repara arquivos do Windows e confere o disco. O PC pode ficar mais lento enquanto isso.")
+                : ("Começar a revisão semanal agora?", "Instala atualizações do Windows e dos seus programas, um por vez, e pode pedir para reiniciar no final.");
+            if (!await PerguntarAsync(titulo, texto, null, "Começar agora")) return;
         }
         await ExecutarRotina(rotina, sim);
     }
@@ -721,7 +747,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Aviso(string texto) => MessageBox.Show(this, texto, "Zelo", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private static void Abrir(string alvo)
     {
@@ -1188,7 +1213,7 @@ public partial class MainWindow : Window
         };
         var estado = new EstadoServico
         {
-            Versao = "1.2.0", Saude = saude, Perfil = cfg.Perfil, DentroDaJanela = true,
+            Versao = "1.5.4", VersaoDisponivel = "1.6.0", Saude = saude, Perfil = cfg.Perfil, DentroDaJanela = true,
             Ultima = new() { ["Diaria"] = agora.AddHours(-2), ["Semanal"] = agora.AddDays(-3), ["Mensal"] = agora.AddDays(-14) },
             Proxima = new() { ["Diaria"] = agora.AddHours(18), ["Semanal"] = agora.AddDays(3.5), ["Mensal"] = agora.AddDays(15) },
             UltimaVerificacaoAtualizacao = agora.AddHours(-1),
@@ -1257,6 +1282,24 @@ public partial class MainWindow : Window
         MontarRegistroDeExemplo();
         await Esperar();
         SalvarPng(this, System.IO.Path.Combine(pasta, "9-registro.png"));
+
+        // Painel de resultados (no lugar das janelas do Windows), com dados de exemplo.
+        NavOtimizar.IsChecked = true;
+        _ = PerguntarAsync("Feito, com 2 item(ns) que não deram certo", "15 de 16 ajuste(s) aplicado(s). 5 de 6 grupo(s) de apps removido(s).", new List<LinhaResultado>
+        {
+            LinhaResultado.Falhou("Tirar Widgets e notícias da barra de tarefas", "O próprio Windows protege esta configuração e não deixa programas mudarem. Faça à mão: Configurações → Personalização → Barra de tarefas → desligue \"Widgets\".", "Fazer à mão", "abrir:ms-settings:taskbar"),
+            LinhaResultado.Falhou("Apps aposentados (Cortana, Skype, Pessoas…)", "O Windows manteve Microsoft.Windows.DevHome: alguns apps do sistema não podem ser removidos.", "Ver apps instalados", "abrir:ms-settings:appsfeatures"),
+            LinhaResultado.Certo("Mostrar a extensão dos arquivos (.pdf, .exe…)"),
+            LinhaResultado.Certo("Desligar o ID de publicidade"),
+            LinhaResultado.Certo("Removido: Microsoft Notícias"),
+            LinhaResultado.Certo("Removido: Clipchamp"),
+        }, "Reiniciar o Explorador", "Depois", TomDialogo.Atencao);
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "10-resultado.png"));
+        FecharDialogo(false);
+        Notificar("Registro copiado. Cole onde quiser (Ctrl + V).");
+        await Esperar();
+        SalvarPng(this, System.IO.Path.Combine(pasta, "11-notificacao.png"));
 
         NavInicio.IsChecked = true;
         AbrirBoasVindas();

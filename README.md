@@ -29,6 +29,9 @@ Para remover: **`DESINSTALAR.bat`**. Ele pergunta se você quer voltar os ajuste
 - Na primeira vez, o Zelo abre um assistente de 3 passos: quando ele pode trabalhar (casa, trabalho com o **seu** expediente — inclusive noturno — ou jogos), o que copiar no backup, o que o Zelo pode instalar sozinho (você decide) e uma primeira vistoria em simulação.
 - Depois, abra o painel pelo Menu Iniciar (**Zelo**) ou pelo ícone da lua perto do relógio. O pontinho do ícone fica verde, âmbar ou coral conforme a saúde do PC.
 - **Simular antes** mostra o que cada verificação faria, sem apagar, instalar ou alterar nada. A seta ao lado de **Cuidar agora** roda ou simula a revisão semanal e o check-up mensal.
+- No topo do Início, uma faixa mostra quando é a próxima vistoria e se há versão nova esperando (com **Instalar agora**).
+- Em **Ajustes**, as opções marcadas com o selo **pede confirmação** abrem o aviso de administrador do Windows (UAC) quando você muda. Assim você não é pego de surpresa.
+- Confirmações e resultados aparecem dentro do próprio Zelo (não em janelas do Windows), com o que deu certo, o que falhou e, quando dá, um botão para fazer à mão.
 - No menu do ícone da bandeja dá para **pausar por 1 hora**.
 
 ## Atualização automática
@@ -76,11 +79,14 @@ Na aba **Otimizar**, você escolhe como usa o PC (Jogos, Trabalho, Estudos, Edi�
 - **Antes de mudar qualquer coisa**, o Zelo cria um ponto de restauração e anota como cada item estava. Cada ajuste tem o próprio botão **Desfazer**, e há um **Desfazer tudo**.
 - **O que ele faz**: remove apps de propaganda que vieram com o Windows (voltam pela Microsoft Store), tira sugestões e anúncios, reduz a telemetria ao obrigatório, ajusta desempenho e jogos, liga recursos úteis para quem programa e instala programas do perfil pelo winget.
 - **O que ele nunca faz**: desligar o Windows Update, o antivírus, o Firewall ou o Controle de Conta de Usuário; remover a Microsoft Store, o Edge ou partes do sistema; usar scripts de terceiros.
+- **Apps que vieram com o Windows** são removidos na **sua** conta (não pelo serviço), porque é lá que eles ficam instalados. Ligado = remover.
+- Dá para **buscar**, ver só os **Marcados** ou **Já aplicados**, abrir os ajustes de **Outros perfis** e fechar os grupos que não interessam. O selo **pede confirmação** indica os grupos que abrem o aviso do Windows.
+- Antes de aplicar, o Zelo mostra a lista do que vai mudar. No fim, mostra item por item o que deu certo e o que não deu, e por quê. Quando o próprio Windows bloqueia uma configuração (como os Widgets em algumas versões), o Zelo não força: mostra o caminho para fazer à mão.
 - A seção **Avançado** mexe em áreas sensíveis sem desligar proteções (ex.: o Windows Update não reiniciar sozinho, verificação do antivírus mais leve, desligar a hibernação). Nada ali vem marcado.
 
 ## Registro (log)
 
-A página **Registro**, no menu do Zelo, mostra ao vivo tudo o que o serviço fez no dia: cada vistoria, cada tarefa e, quando algo não dá certo, os detalhes do motivo (por exemplo, o código de erro do winget e o que ele significa). Dá para escolher o dia, filtrar por texto, ver **Só problemas**, **Copiar** para mandar a quem for ajudar e **Abrir pasta**. Os arquivos ficam em `C:\ProgramData\Zelo\logs`, um por dia, por 30 dias.
+A página **Registro**, no menu do Zelo, mostra ao vivo tudo o que o serviço fez no dia: cada vistoria, cada tarefa e, quando algo não dá certo, os detalhes do motivo (por exemplo, o código de erro do winget e o que ele significa). Cada rotina vira um bloco que abre e fecha, com selos coloridos de quantas coisas deram certo, avisos e problemas (os blocos com problema já abrem sozinhos). Clique com o botão direito numa linha para copiá-la. Dá para escolher o dia, filtrar por texto, ver **Só problemas**, **Copiar** para mandar a quem for ajudar e **Abrir pasta**. Os arquivos ficam em `C:\ProgramData\Zelo\logs`, um por dia, por 30 dias.
 
 ## Onde ficam as coisas
 

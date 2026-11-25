@@ -80,6 +80,27 @@
             </Setter>
         </Style>
 
+        <!-- Selo "pede confirmação": avisa antes que a opção vai abrir o aviso do Windows (UAC). -->
+        <Style x:Key="SeloConfirmacao" TargetType="ContentControl">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="10,0,0,0"/>
+            <Setter Property="ToolTip" Value="Mudar esta opção pede a confirmação de administrador do Windows (o aviso do UAC)."/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContentControl">
+                        <Border Background="{StaticResource Barra}" CornerRadius="8" Padding="7,2">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Width="10" Height="11" Stretch="Uniform" Stroke="{StaticResource Luar}" StrokeThickness="2" StrokeLineJoin="Round"
+                                      Data="M12,3 L20,6 L20,12 C20,16.5 16.5,19.5 12,21 C7.5,19.5 4,16.5 4,12 L4,6 Z" VerticalAlignment="Center"/>
+                                <TextBlock Text="pede confirmação" FontSize="11.5" FontWeight="Normal" Foreground="{StaticResource Luar}" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Linha de configuração com interruptor. -->
         <Style x:Key="LinhaAjuste" TargetType="Border">
             <Setter Property="Padding" Value="20,16"/>
@@ -178,6 +199,21 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="TxtPausa" Style="{StaticResource TCorpo}" VerticalAlignment="Center"/>
                         <Button Grid.Column="1" Content="Retomar agora" Style="{StaticResource BotaoLink}" Click="Retomar_Click"/>
+                    </Grid>
+                </Border>
+
+                <!-- Faixa: próxima vistoria e versão nova -->
+                <Border x:Name="FaixaInfo" Visibility="Collapsed" Background="{StaticResource Ceu}" BorderBrush="{StaticResource Linha}" BorderThickness="1" CornerRadius="10" Padding="16,8" Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Width="15" Height="15" Stretch="Uniform" Stroke="{StaticResource Luar}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" VerticalAlignment="Center"
+                              Data="M12,3 A9,9 0 1 0 12,21 A9,9 0 1 0 12,3 M12,7 L12,12 L15,14"/>
+                        <TextBlock x:Name="TxtFaixa" Grid.Column="1" Style="{StaticResource TCorpo}" FontSize="13.5" TextWrapping="Wrap" VerticalAlignment="Center" Margin="12,4,12,4"/>
+                        <Button x:Name="BtnFaixaAtualizar" Grid.Column="2" Content="Instalar agora" Style="{StaticResource BotaoSecundario}" MinHeight="34" FontSize="13" Visibility="Collapsed" Click="Atualizar_Click"/>
                     </Grid>
                 </Border>
 
@@ -619,22 +655,66 @@
                         </Grid>
                     </Border>
 
-                    <Grid Margin="0,22,0,4">
+                    <TextBlock x:Name="TxtOtimStatus" Style="{StaticResource TSuave}" TextWrapping="Wrap" Margin="0,22,0,10"/>
+                    <!-- Busca e filtros -->
+                    <Grid Margin="0,0,0,6">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*" MinWidth="180"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="TxtOtimStatus" Style="{StaticResource TSuave}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0"/>
-                        <ToggleButton x:Name="ChkTodosPerfis" Grid.Column="1" Style="{StaticResource Ficha}" Content="Mostrar os de outros perfis" Click="TodosPerfis_Click" Margin="0"/>
+                        <Grid>
+                            <TextBox x:Name="TxtBuscaOtim" MinHeight="36" Padding="34,0,10,0" TextChanged="BuscaOtim_Changed" AutomationProperties.Name="Buscar ajuste"/>
+                            <Path Width="14" Height="14" Stretch="Uniform" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeStartLineCap="Round" HorizontalAlignment="Left" Margin="12,0,0,0" IsHitTestVisible="False"
+                                  Data="M10,4 A6,6 0 1 0 10,16 A6,6 0 1 0 10,4 M14.5,14.5 L20,20"/>
+                            <TextBlock x:Name="TxtBuscaOtimDica" Text="Buscar (ex.: Xbox, telemetria, Git)" Foreground="{StaticResource Suave}" FontSize="13" VerticalAlignment="Center" Margin="36,0,0,0" IsHitTestVisible="False"/>
+                        </Grid>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <ToggleButton x:Name="FiltroOtimTodos" Style="{StaticResource Ficha}" Content="Todos" Tag="todos" IsChecked="True" Click="FiltroOtim_Click" Margin="0,0,6,0"/>
+                            <ToggleButton x:Name="FiltroOtimRecomendados" Style="{StaticResource Ficha}" Content="Marcados" Tag="marcados" Click="FiltroOtim_Click" Margin="0,0,6,0"
+                                          ToolTip="Só o que vai ser aplicado"/>
+                            <ToggleButton x:Name="FiltroOtimAplicados" Style="{StaticResource Ficha}" Content="Já aplicados" Tag="aplicados" Click="FiltroOtim_Click" Margin="0,0,6,0"/>
+                            <ToggleButton x:Name="ChkTodosPerfis" Style="{StaticResource Ficha}" Content="Outros perfis" Click="TodosPerfis_Click" Margin="0"
+                                          ToolTip="Mostrar também os ajustes de perfis que você não marcou"/>
+                        </StackPanel>
                     </Grid>
+                    <TextBlock x:Name="TxtOtimNada" Style="{StaticResource TSuave}" Margin="0,18,0,0" Visibility="Collapsed" Text="Nenhum ajuste com esse filtro."/>
 
                     <ItemsControl x:Name="ListaOtimizacao">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Titulo}" Style="{StaticResource TSecao}" FontSize="17"/>
-                                    <TextBlock Text="{Binding Sub}" Visibility="{Binding VisSub}" Style="{StaticResource TSuave}" Margin="0,0,0,10"/>
-                                    <Border Style="{StaticResource Cartao}" Padding="0">
+                                    <!-- Cabeçalho do grupo: abre e fecha, com contagem -->
+                                    <ToggleButton IsChecked="{Binding Expandido, Mode=TwoWay}" Cursor="Hand" Margin="0,22,0,8" AutomationProperties.Name="{Binding Titulo}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent"><ContentPresenter/></Border>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Path Width="11" Height="11" Stretch="Uniform" Stroke="{StaticResource Suave}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Data="{Binding Seta}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Titulo}" Style="{StaticResource TForte}" FontSize="17" VerticalAlignment="Center"/>
+                                                <Border Grid.Column="2" Visibility="{Binding VisEscudo}" Background="{StaticResource Barra}" CornerRadius="8" Padding="7,2" Margin="10,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                        ToolTip="Aplicar estes ajustes pede a confirmação de administrador do Windows (o aviso do UAC).">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Path Width="10" Height="11" Stretch="Uniform" Stroke="{StaticResource Luar}" StrokeThickness="2" StrokeLineJoin="Round"
+                                                              Data="M12,3 L20,6 L20,12 C20,16.5 16.5,19.5 12,21 C7.5,19.5 4,16.5 4,12 L4,6 Z" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="pede confirmação" FontSize="11.5" Foreground="{StaticResource Luar}" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <TextBlock Grid.Column="3" Text="{Binding Contagem}" Style="{StaticResource TSuave}" FontSize="12.5" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <TextBlock Text="{Binding Sub}" Visibility="{Binding VisSub}" Style="{StaticResource TSuave}" TextWrapping="Wrap" Margin="21,4,0,0"/>
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <Border Style="{StaticResource Cartao}" Padding="0" Visibility="{Binding VisItens}">
                                         <ItemsControl ItemsSource="{Binding Itens}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
@@ -683,12 +763,21 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                        <TextBlock x:Name="TxtOtimResumo" Style="{StaticResource TForte}"/>
+                        <WrapPanel>
+                            <TextBlock x:Name="TxtOtimResumo" Style="{StaticResource TForte}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            <Button x:Name="BtnOtimVerLista" Content="Ver lista" Style="{StaticResource BotaoLink}" MinHeight="26" FontSize="13" Margin="10,0,0,0" Click="OtimVerLista_Click" Visibility="Collapsed"/>
+                        </WrapPanel>
                         <TextBlock x:Name="TxtOtimProgresso" Style="{StaticResource TSuave}" TextWrapping="Wrap"/>
                     </StackPanel>
                     <Button x:Name="BtnOtimDesfazerTudo" Grid.Column="1" Content="Desfazer tudo" Style="{StaticResource BotaoSecundario}" Margin="0,0,10,0"
                             Visibility="Collapsed" Click="OtimDesfazerTudo_Click"/>
-                    <Button x:Name="BtnOtimAplicar" Grid.Column="2" Content="Aplicar" Style="{StaticResource BotaoPrimario}" MinWidth="150" Click="OtimAplicar_Click"/>
+                    <Button x:Name="BtnOtimAplicar" Grid.Column="2" Style="{StaticResource BotaoPrimario}" MinWidth="150" Click="OtimAplicar_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Path x:Name="EscudoAplicar" Width="12" Height="14" Stretch="Uniform" StrokeThickness="2.2" StrokeLineJoin="Round" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="M12,3 L20,6 L20,12 C20,16.5 16.5,19.5 12,21 C7.5,19.5 4,16.5 4,12 L4,6 Z"/>
+                            <TextBlock x:Name="TxtAplicar" Text="Aplicar" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </Grid>
             </Border>
         </Grid>
@@ -714,16 +803,96 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <ComboBox x:Name="CmbDiaLog" Width="150" MinHeight="36" VerticalContentAlignment="Center" SelectionChanged="DiaLog_Changed" AutomationProperties.Name="Dia do registro"/>
-                <TextBox x:Name="TxtFiltroLog" Grid.Column="1" Margin="10,0,10,0" MinHeight="36" VerticalContentAlignment="Center" Padding="10,0"
-                         TextChanged="FiltroLog_Changed" AutomationProperties.Name="Filtrar o registro" ToolTip="Mostra só as linhas com este texto (ex.: winget, backup, FALHOU)"/>
+                <Grid Grid.Column="1" Margin="10,0,10,0">
+                    <TextBox x:Name="TxtFiltroLog" MinHeight="36" VerticalContentAlignment="Center" Padding="10,0"
+                             TextChanged="FiltroLog_Changed" AutomationProperties.Name="Filtrar o registro" ToolTip="Mostra só as linhas com este texto (ex.: winget, backup, FALHOU)"/>
+                    <TextBlock x:Name="TxtFiltroLogDica" Text="Filtrar (ex.: winget, backup, falhou)" Foreground="{StaticResource Suave}" FontSize="13" VerticalAlignment="Center" Margin="13,0,0,0" IsHitTestVisible="False"/>
+                </Grid>
                 <ToggleButton x:Name="ChkSoProblemas" Grid.Column="2" Style="{StaticResource Ficha}" Content="Só problemas" Click="FiltroLog_Changed" Margin="0,0,10,0"/>
                 <Button Grid.Column="3" Content="Copiar" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Margin="0,0,10,0" Click="CopiarLog_Click"/>
                 <Button Grid.Column="4" Content="Abrir pasta" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Click="AbrirPastaLog_Click"/>
             </Grid>
             <Border Grid.Row="2" Style="{StaticResource Cartao}" Padding="0">
-                <TextBox x:Name="TxtLog" IsReadOnly="True" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Texto2}"
-                         FontFamily="Cascadia Mono, Consolas" FontSize="12.5" Padding="16,12" TextWrapping="Wrap" VerticalContentAlignment="Top"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Linhas do registro"/>
+                <Grid>
+                    <ScrollViewer x:Name="RolagemLog" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="ListaLog" Margin="8,8,8,12" AutomationProperties.Name="Linhas do registro">
+                            <ItemsControl.Resources>
+                                <!-- Uma linha do registro: hora, marca colorida e texto. Botão direito copia a linha. -->
+                                <DataTemplate x:Key="LinhaLogModelo">
+                                    <Grid Margin="{Binding Recuo}" Background="Transparent">
+                                        <Grid.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Copiar esta linha" Tag="{Binding Bruta}" Click="CopiarLinhaLog_Click"/>
+                                            </ContextMenu>
+                                        </Grid.ContextMenu>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="64"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Hora}" FontFamily="Cascadia Mono, Consolas" FontSize="12" Foreground="{StaticResource Suave}" Margin="0,2,0,0"/>
+                                        <Border Grid.Column="1" Width="8" Height="8" CornerRadius="4" Background="{Binding Cor}" VerticalAlignment="Top" Margin="0,6,10,0"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Texto}" FontSize="13" Foreground="{Binding CorTexto}" TextWrapping="Wrap" Margin="0,0,0,3"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.Resources>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,6" CornerRadius="10" Background="{Binding Fundo}" BorderBrush="{Binding Borda}" BorderThickness="1">
+                                        <StackPanel>
+                                            <!-- Grupo (uma vistoria): cabeçalho que abre e fecha -->
+                                            <ToggleButton Visibility="{Binding VisCabecalho}" IsChecked="{Binding Expandido, Mode=TwoWay}" Cursor="Hand" Focusable="True"
+                                                          AutomationProperties.Name="{Binding Titulo}">
+                                                <ToggleButton.Template>
+                                                    <ControlTemplate TargetType="ToggleButton">
+                                                        <Border x:Name="F" Background="Transparent" CornerRadius="10" Padding="12,10">
+                                                            <ContentPresenter/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="F" Property="Background" Value="{StaticResource Hover}"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                                <Setter TargetName="F" Property="Background" Value="{StaticResource Hover}"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </ToggleButton.Template>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Path Width="10" Height="10" Stretch="Uniform" Stroke="{StaticResource Suave}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Data="{Binding Seta}" VerticalAlignment="Center" Margin="2,0,12,0"/>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Titulo}" Style="{StaticResource TForte}" FontSize="14"/>
+                                                        <TextBlock Text="{Binding Sub}" Style="{StaticResource TSuave}" FontSize="12.5" Margin="0,1,0,0"/>
+                                                    </StackPanel>
+                                                    <ItemsControl Grid.Column="2" ItemsSource="{Binding Selos}" VerticalAlignment="Center">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Background="{Binding Fundo}" CornerRadius="8" Padding="8,2" Margin="6,0,0,0">
+                                                                    <TextBlock Text="{Binding Texto}" Foreground="{Binding Cor}" FontSize="12" FontWeight="SemiBold"/>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </Grid>
+                                            </ToggleButton>
+                                            <ItemsControl ItemsSource="{Binding Linhas}" Visibility="{Binding VisLinhas}" ItemTemplate="{StaticResource LinhaLogModelo}" Margin="{Binding MargemLinhas}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <TextBlock x:Name="TxtLogVazio" Style="{StaticResource TSuave}" TextWrapping="Wrap" Margin="20" Visibility="Collapsed"/>
+                </Grid>
             </Border>
         </Grid>
 
@@ -817,7 +986,7 @@
                 <TextBlock x:Name="TituloBackup" Text="Backup" Style="{StaticResource TSecao}" FontSize="18"/>
                 <Border Style="{StaticResource Cartao}" Padding="20">
                     <StackPanel>
-                        <TextBlock Text="O que copiar" Style="{StaticResource TForte}"/>
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="O que copiar" Style="{StaticResource TForte}"/><ContentControl Style="{StaticResource SeloConfirmacao}"/></StackPanel>
                         <WrapPanel Margin="0,10,0,0">
                             <ItemsControl x:Name="ListaPastas">
                                 <ItemsControl.ItemsPanel>
@@ -878,7 +1047,7 @@
                         <Border Style="{StaticResource LinhaAjuste}">
                             <CheckBox x:Name="ChkLixeira" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
                                 <StackPanel>
-                                    <TextBlock x:Name="TxtTituloLixeira" Text="Lixeira antiga" Style="{StaticResource TForte}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock x:Name="TxtTituloLixeira" Text="Lixeira antiga" Style="{StaticResource TForte}"/><ContentControl Style="{StaticResource SeloConfirmacao}"/></StackPanel>
                                     <TextBlock Text="O que você jogou fora há mais de um mês." Style="{StaticResource TSuave}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -894,7 +1063,7 @@
                         <Border Style="{StaticResource LinhaAjuste}" BorderThickness="0">
                             <CheckBox x:Name="ChkDownloads" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
                                 <StackPanel>
-                                    <TextBlock x:Name="TxtTituloDownloads" Text="Pasta Downloads antiga" Style="{StaticResource TForte}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock x:Name="TxtTituloDownloads" Text="Pasta Downloads antiga" Style="{StaticResource TForte}"/><ContentControl Style="{StaticResource SeloConfirmacao}"/></StackPanel>
                                     <TextBlock Text="Apaga de vez o que está lá há muito tempo. Deixe desligado se você guarda coisas importantes nessa pasta." Style="{StaticResource TSuave}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -909,7 +1078,7 @@
                         <Border Style="{StaticResource LinhaAjuste}">
                             <CheckBox x:Name="ChkWU" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
                                 <StackPanel>
-                                    <TextBlock Text="Windows" Style="{StaticResource TForte}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Windows" Style="{StaticResource TForte}"/><ContentControl Style="{StaticResource SeloConfirmacao}"/></StackPanel>
                                     <TextBlock Text="Correções de segurança, com um ponto de restauração antes." Style="{StaticResource TSuave}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -917,7 +1086,7 @@
                         <Border Style="{StaticResource LinhaAjuste}">
                             <CheckBox x:Name="ChkWinget" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
                                 <StackPanel>
-                                    <TextBlock Text="Programas instalados" Style="{StaticResource TForte}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Programas instalados" Style="{StaticResource TForte}"/><ContentControl Style="{StaticResource SeloConfirmacao}"/></StackPanel>
                                     <TextBlock Text="Pelo gerenciador de pacotes do Windows (winget)." Style="{StaticResource TSuave}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -925,7 +1094,7 @@
                         <Border Style="{StaticResource LinhaAjuste}">
                             <CheckBox x:Name="ChkDrivers" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
                                 <StackPanel>
-                                    <TextBlock Text="Drivers" Style="{StaticResource TForte}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="Drivers" Style="{StaticResource TForte}"/><ContentControl Style="{StaticResource SeloConfirmacao}"/></StackPanel>
                                     <TextBlock Text="Chipset, rede, áudio e USB. O de vídeo fica com o aplicativo da sua placa (NVIDIA, AMD ou Intel)." Style="{StaticResource TSuave}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -933,7 +1102,7 @@
                         <Border Style="{StaticResource LinhaAjuste}" BorderThickness="0">
                             <CheckBox x:Name="ChkAutoUpdate" Style="{StaticResource Interruptor}" Click="Ajuste_Click">
                                 <StackPanel>
-                                    <TextBlock Text="O próprio Zelo" Style="{StaticResource TForte}"/>
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="O próprio Zelo" Style="{StaticResource TForte}"/><ContentControl Style="{StaticResource SeloConfirmacao}"/></StackPanel>
                                     <TextBlock Text="Instala sozinho as versões novas publicadas no GitHub." Style="{StaticResource TSuave}"/>
                                 </StackPanel>
                             </CheckBox>
@@ -1124,6 +1293,77 @@
                 </DockPanel>
             </Border>
         </Grid>
+
+        <!-- ======================= Painel de mensagens e resultados ======================= -->
+        <Grid x:Name="PainelDialogo" Grid.ColumnSpan="2" Visibility="Collapsed" Panel.ZIndex="20">
+            <Border Background="#D90B0F1A"/>
+            <Border Style="{StaticResource Cartao}" CornerRadius="16" Padding="0" MaxWidth="640" MaxHeight="620" Margin="40,32" VerticalAlignment="Center" BorderBrush="{StaticResource LinhaForte}">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="28,24,28,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="IconeDialogoFundo" Width="40" Height="40" CornerRadius="12" VerticalAlignment="Top">
+                            <Path x:Name="IconeDialogo" Width="18" Height="18" Stretch="Uniform" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <TextBlock x:Name="TxtDialogoTitulo" Style="{StaticResource TForte}" FontSize="19" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TxtDialogoTexto" Style="{StaticResource TCorpo}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Linha}" BorderThickness="0,1,0,0" Padding="28,14">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnDialogoNao" Content="Cancelar" Style="{StaticResource BotaoSecundario}" Margin="0,0,10,0" Click="DialogoNao_Click"/>
+                            <Button x:Name="BtnDialogoSim" Content="Continuar" Style="{StaticResource BotaoPrimario}" MinWidth="130" Click="DialogoSim_Click"/>
+                        </StackPanel>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="ListaDialogo" Margin="28,6,28,14">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource Linha}" BorderThickness="0,0,0,1" Padding="0,10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="26" Height="26" CornerRadius="8" Background="{Binding CorFundo}" VerticalAlignment="Top">
+                                                <Path Width="12" Height="12" Stretch="Uniform" Stroke="{Binding Cor}" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{Binding Icone}"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="12,2,12,0">
+                                                <TextBlock Text="{Binding Texto}" Style="{StaticResource TForte}" FontSize="14" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding Detalhe}" Visibility="{Binding VisDetalhe}" Style="{StaticResource TSuave}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="2" Content="{Binding AcaoTexto}" Tag="{Binding AcaoId}" Visibility="{Binding VisAcao}" Style="{StaticResource BotaoSecundario}"
+                                                    MinHeight="34" FontSize="12.5" Padding="12,0" VerticalAlignment="Top" Click="AcaoPonto_Click"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- ======================= Notificação curta ======================= -->
+        <Border x:Name="Notificacao" Grid.Column="1" Visibility="Collapsed" Panel.ZIndex="15" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,28,104" MaxWidth="440" CornerRadius="12" Padding="16,12" Background="{StaticResource Ceu}" BorderThickness="1" BorderBrush="{StaticResource LinhaForte}">
+            <Border.RenderTransform><TranslateTransform x:Name="NotificacaoDesloca"/></Border.RenderTransform>
+            <Border.Effect><DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.45" Color="#000000"/></Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Path x:Name="IconeNotificacao" Width="16" Height="16" Stretch="Uniform" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                <TextBlock x:Name="TxtNotificacao" Grid.Column="1" Style="{StaticResource TCorpo}" FontSize="13.5" TextWrapping="Wrap" Margin="12,0,12,0" VerticalAlignment="Center"/>
+                <Button Grid.Column="2" Content="✕" Style="{StaticResource BotaoLink}" MinHeight="24" Padding="4,0" VerticalAlignment="Top" Click="FecharNotificacao_Click" AutomationProperties.Name="Fechar aviso"/>
+            </Grid>
+        </Border>
 
         <!-- ======================= Boas-vindas ======================= -->
         <Grid x:Name="BoasVindas" Grid.ColumnSpan="2" Background="{StaticResource Noite}" Visibility="Collapsed">

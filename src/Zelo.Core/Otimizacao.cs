@@ -24,6 +24,10 @@ public sealed class Ajuste
     public string Descricao { get; init; } = "";
     /// <summary>Algo que a pessoa precisa saber antes (ex.: só vale depois de reiniciar).</summary>
     public string? Aviso { get; init; }
+    /// <summary>Onde a pessoa faz isso à mão, se o Windows não deixar programas mudarem.</summary>
+    public string? ComoFazerManual { get; init; }
+    /// <summary>Endereço que abre esse lugar do Windows (ms-settings:…).</summary>
+    public string? AbrirManual { get; init; }
     public TipoAjuste Tipo { get; init; }
     public RiscoAjuste Risco { get; init; } = RiscoAjuste.Baixo;
     /// <summary>Perfis para os quais o ajuste faz sentido. Vazio = todos.</summary>
@@ -73,10 +77,23 @@ public sealed class AndamentoOtimizacao
     public int Total { get; set; }
     public string? Resultado { get; set; }
     public List<string> Falhas { get; set; } = new();
+    /// <summary>O resultado de cada ajuste, para o painel mostrar item por item.</summary>
+    public List<ResultadoAjuste> Itens { get; set; } = new();
     public bool? PontoCriado { get; set; }
     /// <summary>O ponto de restauração falhou e nada foi alterado (a pessoa decide se continua).</summary>
     public bool PontoFalhou { get; set; }
     public DateTime? Fim { get; set; }
+}
+
+public sealed class ResultadoAjuste
+{
+    public string Id { get; set; } = "";
+    public string Nome { get; set; } = "";
+    public bool Ok { get; set; }
+    /// <summary>Por que não deu certo (vazio quando deu), ou um detalhe como "já estava assim".</summary>
+    public string Motivo { get; set; } = "";
+    /// <summary>Onde a pessoa faz isso à mão, quando o Windows não deixa (ex.: ms-settings:taskbar).</summary>
+    public string? AbrirManual { get; set; }
 }
 
 public sealed class AplicacaoAjuste
@@ -258,6 +275,9 @@ public static class CatalogoOtimizacao
         {
             Id = "priv-widgets", Grupo = GPriv, Nome = "Tirar Widgets e notícias da barra de tarefas", Tipo = TipoAjuste.Registro, Recomendado = true, ReiniciarExplorer = true,
             Descricao = "Some o painel de notícias, clima e anúncios que abre ao passar o mouse.",
+            Aviso = "Em versões recentes do Windows 11, o próprio Windows bloqueia essa mudança por programas. Se acontecer, o Zelo mostra onde desligar à mão.",
+            ComoFazerManual = "Configurações → Personalização → Barra de tarefas → desligue \"Widgets\"",
+            AbrirManual = "ms-settings:taskbar",
             Valores = new[]
             {
                 new ValorReg(@"HKLM\SOFTWARE\Policies\Microsoft\Dsh", "AllowNewsAndInterests", 0),
@@ -605,7 +625,8 @@ public static class Otimizador
 
     public static string? Iniciar(List<string> ids, List<PerfilUso> perfis, string? sid, bool desfazer, bool semPonto, CancellationToken ct)
     {
-        var ajustes = ids.Distinct().Select(CatalogoOtimizacao.Por).Where(a => a is not null && a.Tipo != TipoAjuste.Programa).Select(a => a!).ToList();
+        // Apps da Loja e programas são feitos pelo painel, na conta da própria pessoa (não pelo serviço).
+        var ajustes = ids.Distinct().Select(CatalogoOtimizacao.Por).Where(a => a is not null && a.Tipo is not (TipoAjuste.Programa or TipoAjuste.App)).Select(a => a!).ToList();
         if (ajustes.Any(PorUsuario) && !SidValido(sid)) return "Não foi possível identificar a sua conta do Windows.";
         if (!Coordenador.Iniciar("otimizacao")) return Coordenador.Explicar();
         Andamento = new AndamentoOtimizacao { Rodando = true, Desfazendo = desfazer, Total = ajustes.Count, Etapa = "Começando" };
@@ -661,7 +682,13 @@ public static class Otimizador
             try
             {
                 var situacao = await LerAsync(a, sid, apps, ct);
-                if (situacao == SituacaoAjuste.Ativo) { ok++; continue; }
+                if (situacao == SituacaoAjuste.Ativo)
+                {
+                    ok++;
+                    Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = true, Motivo = "Já estava assim." });
+                    Andamento.Feitos++;
+                    continue;
+                }
                 if (situacao == SituacaoAjuste.Indisponivel) throw new InvalidOperationException("não se aplica a este PC.");
 
                 // Diário: primeiro anota como estava, depois muda, confere e só então marca como concluído.
@@ -694,10 +721,14 @@ public static class Otimizador
                 reg.Aplicados[chave].Concluido = true;
                 Salvar(reg);
                 ok++;
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = true });
             }
             catch (Exception ex)
             {
-                Andamento.Falhas.Add($"{a.Nome}: {Limpar(ex.Message)}");
+                var motivo = Explicar(a, ex);
+                Andamento.Falhas.Add($"{a.Nome}: {motivo}");
+                bool protegido = ex is UnauthorizedAccessException || ex.Message.Contains("unauthorized operation", StringComparison.OrdinalIgnoreCase);
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = false, Motivo = motivo, AbrirManual = protegido ? a.AbrirManual : null });
             }
             Andamento.Feitos++;
         }
@@ -705,6 +736,7 @@ public static class Otimizador
             : $"{ok} de {ajustes.Count} ajuste(s) aplicado(s)."
               + (Andamento.PontoCriado == false ? " Sem ponto de restauração (você escolheu continuar); cada ajuste ainda pode ser desfeito pelo Zelo." : "");
         Registro.Escrever($"Otimizar: {Andamento.Resultado} Perfis: {string.Join(", ", perfis)}. Falhas: {Andamento.Falhas.Count}.");
+        foreach (var f in Andamento.Falhas) Registro.Escrever("   Otimizar · não aplicado: " + f);
     }
 
     private static async Task DesfazerAsync(List<Ajuste> ajustes, string? sid, CancellationToken ct)
@@ -722,15 +754,18 @@ public static class Otimizador
                 reg.Aplicados.Remove(chave);
                 Salvar(reg);
                 ok++;
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = true });
             }
             catch (Exception ex)
             {
                 Andamento.Falhas.Add($"{a.Nome}: {Limpar(ex.Message)}");
+                Andamento.Itens.Add(new ResultadoAjuste { Id = a.Id, Nome = a.Nome, Ok = false, Motivo = Limpar(ex.Message) });
             }
             Andamento.Feitos++;
         }
         Andamento.Resultado = $"{ok} ajuste(s) desfeito(s).";
         Registro.Escrever($"Otimizar: {Andamento.Resultado} Falhas: {Andamento.Falhas.Count}.");
+        foreach (var f in Andamento.Falhas) Registro.Escrever("   Otimizar · não desfeito: " + f);
     }
 
     /// <summary>
@@ -985,4 +1020,13 @@ public static class Otimizador
         s.Split('\n', '\r').Select(l => l.Trim()).LastOrDefault(l => l.Length > 0) ?? "";
 
     private static string Limpar(string s) => s.StartsWith("ERRO: ") ? s[6..] : s;
+
+    /// <summary>Erro em linguagem simples; quando o Windows protege a configuração, diz onde fazer à mão.</summary>
+    internal static string Explicar(Ajuste a, Exception ex)
+    {
+        if (ex is UnauthorizedAccessException || ex.Message.Contains("unauthorized operation", StringComparison.OrdinalIgnoreCase))
+            return "o próprio Windows protege esta configuração e não deixa programas mudarem"
+                   + (a.ComoFazerManual is { } m ? $". Faça à mão: {m}." : ".");
+        return Limpar(ex.Message);
+    }
 }
