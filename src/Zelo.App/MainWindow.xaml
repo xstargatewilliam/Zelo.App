@@ -763,10 +763,10 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="TxtOtimResumo" Style="{StaticResource TForte}" VerticalAlignment="Center"/>
+                        <WrapPanel>
+                            <TextBlock x:Name="TxtOtimResumo" Style="{StaticResource TForte}" VerticalAlignment="Center" TextWrapping="Wrap"/>
                             <Button x:Name="BtnOtimVerLista" Content="Ver lista" Style="{StaticResource BotaoLink}" MinHeight="26" FontSize="13" Margin="10,0,0,0" Click="OtimVerLista_Click" Visibility="Collapsed"/>
-                        </StackPanel>
+                        </WrapPanel>
                         <TextBlock x:Name="TxtOtimProgresso" Style="{StaticResource TSuave}" TextWrapping="Wrap"/>
                     </StackPanel>
                     <Button x:Name="BtnOtimDesfazerTudo" Grid.Column="1" Content="Desfazer tudo" Style="{StaticResource BotaoSecundario}" Margin="0,0,10,0"
@@ -803,8 +803,11 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <ComboBox x:Name="CmbDiaLog" Width="150" MinHeight="36" VerticalContentAlignment="Center" SelectionChanged="DiaLog_Changed" AutomationProperties.Name="Dia do registro"/>
-                <TextBox x:Name="TxtFiltroLog" Grid.Column="1" Margin="10,0,10,0" MinHeight="36" VerticalContentAlignment="Center" Padding="10,0"
-                         TextChanged="FiltroLog_Changed" AutomationProperties.Name="Filtrar o registro" ToolTip="Mostra só as linhas com este texto (ex.: winget, backup, FALHOU)"/>
+                <Grid Grid.Column="1" Margin="10,0,10,0">
+                    <TextBox x:Name="TxtFiltroLog" MinHeight="36" VerticalContentAlignment="Center" Padding="10,0"
+                             TextChanged="FiltroLog_Changed" AutomationProperties.Name="Filtrar o registro" ToolTip="Mostra só as linhas com este texto (ex.: winget, backup, FALHOU)"/>
+                    <TextBlock x:Name="TxtFiltroLogDica" Text="Filtrar (ex.: winget, backup, falhou)" Foreground="{StaticResource Suave}" FontSize="13" VerticalAlignment="Center" Margin="13,0,0,0" IsHitTestVisible="False"/>
+                </Grid>
                 <ToggleButton x:Name="ChkSoProblemas" Grid.Column="2" Style="{StaticResource Ficha}" Content="Só problemas" Click="FiltroLog_Changed" Margin="0,0,10,0"/>
                 <Button Grid.Column="3" Content="Copiar" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Margin="0,0,10,0" Click="CopiarLog_Click"/>
                 <Button Grid.Column="4" Content="Abrir pasta" Style="{StaticResource BotaoSecundario}" MinHeight="36" FontSize="13" Click="AbrirPastaLog_Click"/>
@@ -1347,7 +1350,7 @@
 
         <!-- ======================= Notificação curta ======================= -->
         <Border x:Name="Notificacao" Grid.Column="1" Visibility="Collapsed" Panel.ZIndex="15" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                Margin="0,0,28,28" MaxWidth="440" CornerRadius="12" Padding="16,12" Background="{StaticResource Ceu}" BorderThickness="1" BorderBrush="{StaticResource LinhaForte}">
+                Margin="0,0,28,104" MaxWidth="440" CornerRadius="12" Padding="16,12" Background="{StaticResource Ceu}" BorderThickness="1" BorderBrush="{StaticResource LinhaForte}">
             <Border.RenderTransform><TranslateTransform x:Name="NotificacaoDesloca"/></Border.RenderTransform>
             <Border.Effect><DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.45" Color="#000000"/></Border.Effect>
             <Grid>

@@ -292,6 +292,7 @@ public partial class MainWindow
 
     private void FiltroLog_Changed(object sender, RoutedEventArgs e)
     {
+        TxtFiltroLogDica.Visibility = TxtFiltroLog.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (!IsLoaded) return;
         MostrarLog(manterPosicao: false);
     }
