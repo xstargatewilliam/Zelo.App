@@ -508,7 +508,7 @@ public partial class MainWindow : Window
         TxtAtualizacao.Text =
             e.Atualizando ? "Atualizando o Zelo…" :
             e.VersaoDisponivel is not null ? $"Versão nova disponível: {e.VersaoDisponivel} (você tem a {e.Versao})." :
-            e.ErroAtualizacao is not null ? $"A última consulta ao GitHub falhou: {e.ErroAtualizacao}" :
+            e.ErroAtualizacao is not null ? e.ErroAtualizacao :
             e.UltimaVerificacaoAtualizacao is not null ? $"Você tem a versão mais recente (consultado {Palavras.Quando(e.UltimaVerificacaoAtualizacao)})." :
             "Ainda não consultou o GitHub.";
         BtnAtualizar.IsEnabled = !e.Atualizando && e.RotinaAtual is null;
