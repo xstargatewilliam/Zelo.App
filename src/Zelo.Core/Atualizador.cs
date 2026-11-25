@@ -23,6 +23,10 @@ public static class Atualizador
     private static readonly SemaphoreSlim Trava = new(1, 1);
     private static readonly HttpClient Http = CriarHttp();
 
+    // Sem seguir redirecionamentos: o endereço "releases/latest" responde com um redirecionamento
+    // para a página da versão, e é dele que sai o número da versão.
+    private static readonly HttpClient HttpSemRedirecionar = CriarHttp(seguirRedirecionamentos: false);
+
     public static bool EmAndamento => Trava.CurrentCount == 0;
 
     private static string Pasta => Path.Combine(Caminhos.Base, "atualizacao");
@@ -47,9 +51,9 @@ public static class Atualizador
     public static EstadoAtualizacao LerEstado() => Estado.Ler<EstadoAtualizacao>("atualizacao") ?? new EstadoAtualizacao();
     private static void GravarEstado(EstadoAtualizacao e) => Estado.Gravar("atualizacao", e);
 
-    private static HttpClient CriarHttp()
+    private static HttpClient CriarHttp(bool seguirRedirecionamentos = true)
     {
-        var h = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        var h = new HttpClient(new HttpClientHandler { AllowAutoRedirect = seguirRedirecionamentos }) { Timeout = TimeSpan.FromMinutes(10) };
         h.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Zelo", "1.0"));
         h.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return h;
@@ -66,8 +70,62 @@ public static class Atualizador
         return Version.TryParse(t, out var v) ? Normalizar(v) : null;
     }
 
-    /// <summary>Consulta a última versão publicada. Null se não houver nenhuma com pacote para este PC.</summary>
+    /// <summary>
+    /// Consulta a última versão publicada. Null se não houver nenhuma com pacote para este PC.
+    /// Usa primeiro a página comum do GitHub ("releases/latest"), que não tem o limite de 60 consultas
+    /// por hora da API; a API fica só como reserva.
+    /// </summary>
     public static async Task<VersaoRemota?> ConsultarAsync(CancellationToken ct)
+    {
+        try
+        {
+            var pelaPagina = await ConsultarPelaPaginaAsync(ct);
+            if (pelaPagina is not null) return pelaPagina;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            Registro.Escrever("Atualização: a página de versões do GitHub não respondeu (" + ex.Message + "); tentando pela API.");
+        }
+        return await ConsultarPelaApiAsync(ct);
+    }
+
+    private static async Task<VersaoRemota?> ConsultarPelaPaginaAsync(CancellationToken ct)
+    {
+        using var resp = await HttpSemRedirecionar.GetAsync($"https://github.com/{Repositorio}/releases/latest", HttpCompletionOption.ResponseHeadersRead, ct);
+        var codigo = (int)resp.StatusCode;
+        if (codigo is < 300 or >= 400 || resp.Headers.Location is null)
+            throw new InvalidOperationException($"resposta inesperada ({codigo})");
+        var tag = TagDoEndereco(resp.Headers.Location.ToString());
+        if (tag is null) return null; // sem versão publicada: o GitHub manda para a lista de versões
+        var versao = LerVersao(tag);
+        if (versao is null) return null;
+        var baseUrl = $"https://github.com/{Repositorio}/releases/download/{Uri.EscapeDataString(tag)}/";
+        return new VersaoRemota(versao, tag, baseUrl + NomePacote, baseUrl + NomePacote + ".sha256", "");
+    }
+
+    /// <summary>Tira a tag de ".../releases/tag/v1.5.4". Null se o endereço não apontar para uma versão.</summary>
+    internal static string? TagDoEndereco(string endereco)
+    {
+        const string marca = "/releases/tag/";
+        int i = endereco.IndexOf(marca, StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return null;
+        var tag = Uri.UnescapeDataString(endereco[(i + marca.Length)..].Split('?', '#')[0].TrimEnd('/'));
+        return tag.Length == 0 || tag.Contains('/') ? null : tag;
+    }
+
+    /// <summary>Explica em português os erros comuns ao falar com o GitHub.</summary>
+    internal static string ExplicarErro(Exception ex)
+    {
+        var m = ex.Message;
+        if (m.Contains("403") || m.Contains("rate limit", StringComparison.OrdinalIgnoreCase) || m.Contains("429"))
+            return "o GitHub limitou as consultas vindas da sua rede por um tempo (é um limite por endereço de internet, comum quando a operadora divide o mesmo endereço entre vários clientes). O Zelo tenta de novo mais tarde.";
+        if (ex is HttpRequestException or TaskCanceledException)
+            return "não deu para falar com o GitHub (sem internet ou conexão lenta). O Zelo tenta de novo mais tarde.";
+        return m;
+    }
+
+    private static async Task<VersaoRemota?> ConsultarPelaApiAsync(CancellationToken ct)
     {
         using var resp = await Http.GetAsync($"https://api.github.com/repos/{Repositorio}/releases/latest", ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return null; // nenhuma versão publicada ainda
@@ -150,10 +208,10 @@ public static class Atualizador
         catch (Exception ex)
         {
             estado.UltimaVerificacao = DateTime.Now;
-            estado.UltimoErro = ex.Message;
+            estado.UltimoErro = "A última consulta ao GitHub falhou: " + ExplicarErro(ex);
             GravarEstado(estado);
             Registro.Escrever("Falha na atualização: " + ex.Message);
-            return "Não foi possível atualizar: " + ex.Message;
+            return "Não foi possível atualizar: " + ExplicarErro(ex);
         }
         finally
         {
