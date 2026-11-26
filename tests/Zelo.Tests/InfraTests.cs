@@ -119,3 +119,17 @@ public class BackupVersoesTests : IDisposable
         Assert.True(Directory.Exists(estranha));
     }
 }
+
+/// <summary>Uma otimização concluída não pode continuar bloqueando novas operações.</summary>
+public class OtimizadorFinalizacaoTests : ComPastaTemporaria
+{
+    [Fact]
+    public async Task Finalizacao_libera_coordenador_antes_de_informar_conclusao()
+    {
+        Assert.Null(Otimizador.Iniciar(new(), new(), null, desfazer: false, semPonto: true, CancellationToken.None));
+        for (int i = 0; i < 1000 && Otimizador.Andamento.Rodando; i++)
+            await Task.Delay(10);
+        Assert.False(Otimizador.Andamento.Rodando, "A otimização não terminou.");
+        Assert.Null(Coordenador.Atual);
+    }
+}
