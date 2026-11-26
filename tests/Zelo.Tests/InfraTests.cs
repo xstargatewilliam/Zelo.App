@@ -77,8 +77,30 @@ public class BackupVersoesTests : IDisposable
 
         Assert.Equal(1, movidos);
         Assert.Equal("antigo", File.ReadAllText(Path.Combine(versoes, "mudou.txt")));
-        Assert.False(File.Exists(Path.Combine(espelho, "mudou.txt")));
+        Assert.True(File.Exists(Path.Combine(espelho, "mudou.txt")));
+        Assert.Equal("antigo", File.ReadAllText(Path.Combine(espelho, "mudou.txt")));
         Assert.True(File.Exists(Path.Combine(espelho, "igual.txt")));
+    }
+
+    [Fact]
+    public void Falha_ao_preservar_versao_nao_apaga_o_espelho()
+    {
+        var origem = Path.Combine(_raiz, "origem");
+        var espelho = Path.Combine(_raiz, "espelho");
+        var versoes = Path.Combine(_raiz, "versoes");
+        Directory.CreateDirectory(origem);
+        Directory.CreateDirectory(espelho);
+        Directory.CreateDirectory(versoes);
+        var original = Path.Combine(origem, "documento.txt");
+        var copia = Path.Combine(espelho, "documento.txt");
+        File.WriteAllText(copia, "copia recuperavel");
+        File.SetLastWriteTimeUtc(copia, DateTime.UtcNow.AddDays(-1));
+        File.WriteAllText(original, "conteudo modificado");
+        File.WriteAllText(Path.Combine(versoes, "documento.txt"), "versao anterior existente");
+
+        Assert.Throws<IOException>(() => BackupIncremental.GuardarVersoes(origem, espelho, versoes, CancellationToken.None));
+        Assert.Equal("copia recuperavel", File.ReadAllText(copia));
+        Assert.Equal("versao anterior existente", File.ReadAllText(Path.Combine(versoes, "documento.txt")));
     }
 
     [Fact]

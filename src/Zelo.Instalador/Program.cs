@@ -87,14 +87,20 @@ public static class Program
         var anterior = Path.Combine(Dados, "instalacao-anterior");
         if (atualizacao)
         {
-            foreach (var parte in new[] { "Servico", "Painel" })
-                if (!Robocopy(Path.Combine(dest, parte), Path.Combine(anterior, parte)))
+            // Não misturar restos de atualizações anteriores com esta cópia de segurança.
+            if (Directory.Exists(anterior)) Directory.Delete(anterior, recursive: true);
+            foreach (var parte in new[] { "Servico", "Painel", "Instalador" })
+            {
+                var instalada = Path.Combine(dest, parte);
+                if (!Directory.Exists(instalada)) continue; // versões antigas não tinham instalador próprio
+                if (!Robocopy(instalada, Path.Combine(anterior, parte)))
                 {
                     IniciarServico();
                     Erro("Não foi possível guardar uma cópia da versão instalada. Nada foi trocado.");
                     Pausar();
                     return 3;
                 }
+            }
         }
 
         Etapa(2, $"Copiando os arquivos para {dest}");
@@ -105,10 +111,11 @@ public static class Program
         {
             if (atualizacao)
             {
-                foreach (var parte in new[] { "Servico", "Painel" })
-                    Robocopy(Path.Combine(anterior, parte), Path.Combine(dest, parte));
-                IniciarServico();
-                Erro("A cópia dos arquivos novos falhou. A versão que estava instalada foi restaurada.");
+                var restaurou = RestaurarVersao(anterior, dest);
+                var voltou = restaurou && IniciarServico();
+                Erro(voltou
+                    ? "A cópia dos arquivos novos falhou. A versão anterior foi restaurada e está rodando."
+                    : "A cópia falhou e a recuperação não foi confirmada. Não use o Zelo até reparar a instalação.");
             }
             else Erro("A cópia dos arquivos falhou. Feche programas que possam estar usando a pasta e tente de novo.");
             Pausar();
@@ -130,7 +137,22 @@ public static class Program
         }
         else Rodar("sc.exe", $"config {Servico} binPath= \"\\\"{exeServico}\\\"\" start= delayed-auto");
         Rodar("sc.exe", $"failure {Servico} reset= 86400 actions= restart/60000/restart/60000/restart/300000");
-        if (!IniciarServico()) throw new InvalidOperationException("o serviço do Zelo não iniciou. Veja os logs em " + Path.Combine(Dados, "logs"));
+        if (!IniciarServico())
+        {
+            if (atualizacao)
+            {
+                // A cópia ter dado certo não significa que os novos executáveis funcionam.
+                PararServico();
+                var restaurou = RestaurarVersao(anterior, dest);
+                var voltou = restaurou && IniciarServico();
+                Erro(voltou
+                    ? "A versão nova não iniciou. A versão anterior foi restaurada e está rodando."
+                    : "A versão nova não iniciou e não foi possível confirmar a recuperação. Repare a instalação com o pacote anterior.");
+                Pausar();
+                return 5;
+            }
+            throw new InvalidOperationException("o serviço do Zelo não iniciou. Veja os logs em " + Path.Combine(Dados, "logs"));
+        }
 
         var painel = Path.Combine(dest, "Painel", "Zelo.App.exe");
         using (var run = Registry.LocalMachine.CreateSubKey(ChaveRun))
@@ -310,6 +332,25 @@ public static class Program
         try { if (sc.Status == ServiceControllerStatus.Stopped) sc.Start(); } catch { }
         try { sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(60)); return true; }
         catch { return false; }
+    }
+
+    /// <summary>Restaura todos os componentes anteriores, inclusive o desinstalador se existia.</summary>
+    internal static bool RestaurarVersao(string anterior, string destino)
+    {
+        bool tudo = true;
+        foreach (var parte in new[] { "Servico", "Painel", "Instalador" })
+        {
+            var salvo = Path.Combine(anterior, parte);
+            var atual = Path.Combine(destino, parte);
+            if (Directory.Exists(salvo))
+                tudo &= Robocopy(salvo, atual);
+            else if (parte == "Instalador" && Directory.Exists(atual))
+            {
+                try { Directory.Delete(atual, recursive: true); }
+                catch { tudo = false; }
+            }
+        }
+        return tudo;
     }
 
     private static bool Robocopy(string origem, string destino)

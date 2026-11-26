@@ -32,6 +32,40 @@ public class InstaladorTests : ComPastaTemporaria
     }
 
     [Fact]
+    public void Restaura_a_versao_anterior_inclusive_o_instalador()
+    {
+        var salvo = Path.Combine(Pasta, "anterior");
+        var atual = Path.Combine(Pasta, "atual");
+        foreach (var parte in new[] { "Servico", "Painel", "Instalador" })
+        {
+            Directory.CreateDirectory(Path.Combine(salvo, parte));
+            Directory.CreateDirectory(Path.Combine(atual, parte));
+            File.WriteAllText(Path.Combine(salvo, parte, "versao.txt"), "antiga");
+            File.WriteAllText(Path.Combine(atual, parte, "versao.txt"), "nova");
+        }
+        Assert.True(Program.RestaurarVersao(salvo, atual));
+        foreach (var parte in new[] { "Servico", "Painel", "Instalador" })
+            Assert.Equal("antiga", File.ReadAllText(Path.Combine(atual, parte, "versao.txt")));
+    }
+
+    [Fact]
+    public void Restaura_versao_antiga_sem_instalador_removendo_o_novo()
+    {
+        var salvo = Path.Combine(Pasta, "anterior");
+        var atual = Path.Combine(Pasta, "atual");
+        foreach (var parte in new[] { "Servico", "Painel" })
+        {
+            Directory.CreateDirectory(Path.Combine(salvo, parte));
+            Directory.CreateDirectory(Path.Combine(atual, parte));
+            File.WriteAllText(Path.Combine(salvo, parte, "versao.txt"), "antiga");
+        }
+        Directory.CreateDirectory(Path.Combine(atual, "Instalador"));
+        File.WriteAllText(Path.Combine(atual, "Instalador", "novo.exe"), "nova");
+        Assert.True(Program.RestaurarVersao(salvo, atual));
+        Assert.False(Directory.Exists(Path.Combine(atual, "Instalador")));
+    }
+
+    [Fact]
     public void EntradaEmAppsApontaParaODesinstalador()
     {
         var v = Program.ValoresDesinstalar(@"C:\Program Files\Zelo", "1.5.7", 1234).ToDictionary(x => x.Nome, x => x.Valor);
