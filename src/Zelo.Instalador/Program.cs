@@ -353,12 +353,15 @@ public static class Program
         return tudo;
     }
 
+    /// <summary>Robocopy: 0–7 são sucesso; negativos (inclusive timeout -1) são falha.</summary>
+    internal static bool CodigoRobocopyOk(int codigo) => codigo is >= 0 and < 8;
+
     private static bool Robocopy(string origem, string destino)
     {
         if (!Directory.Exists(origem)) return false;
         var robocopy = Path.Combine(Environment.SystemDirectory, "robocopy.exe");
         var (c, _) = Rodar(robocopy, $"\"{origem}\" \"{destino}\" /MIR /R:3 /W:2 /NFL /NDL /NJH /NJS /NP");
-        return c < 8; // robocopy: 0-7 = sucesso
+        return CodigoRobocopyOk(c);
     }
 
     private static void CriarAtalho(string atalho, string alvo)

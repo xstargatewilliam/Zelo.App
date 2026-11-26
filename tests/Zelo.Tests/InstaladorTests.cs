@@ -31,6 +31,19 @@ public class InstaladorTests : ComPastaTemporaria
         Assert.Null(Program.LocalizarPacote(Pasta));
     }
 
+    [Theory]
+    [InlineData(-1, false)] // executável interrompido por timeout
+    [InlineData(-2, false)]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
+    [InlineData(7, true)]
+    [InlineData(8, false)]
+    [InlineData(16, false)]
+    public void Codigo_do_robocopy_nao_confunde_timeout_com_sucesso(int codigo, bool esperado)
+    {
+        Assert.Equal(esperado, Program.CodigoRobocopyOk(codigo));
+    }
+
     [Fact]
     public void Restaura_a_versao_anterior_inclusive_o_instalador()
     {
