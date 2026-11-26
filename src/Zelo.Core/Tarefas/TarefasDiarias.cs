@@ -212,31 +212,44 @@ public sealed class EventosCriticos : Tarefa
         var dados = await Executor.PowerShellJsonAsync(Script.Replace("{{HORAS}}", horas.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)), ct);
         var total = (int)(dados.Num("Total") ?? 0);
         var det = new List<string>();
-        var graves = new List<string>();
-        var importantes = new List<string>();
+        var grupos = dados.Itens("Grupos").Select(g => (Fonte: g.Str("Fonte"), Id: (int)(g.Num("Id") ?? 0), Qtd: (int)(g.Num("Qtd") ?? 0), Msg: g.Str("Msg"))).ToList();
+        foreach (var g in grupos) det.Add($"{g.Qtd}× {g.Fonte} (ID {g.Id}): {g.Msg}");
+        var (status, resumo, dica) = Avaliar(grupos.Select(g => (g.Fonte, g.Id, g.Qtd)), total);
+        if (dica is not null) det.Insert(0, dica);
+        return Res(status, resumo, det);
+    }
 
-        foreach (var g in dados.Itens("Grupos"))
+    /// <summary>Até 2 desligamentos inesperados em 24h sem tela azul: aviso (pode ter sido falta de luz ou o botão).</summary>
+    internal const int DesligamentosParaCritico = 3;
+
+    internal static (StatusTarefa Status, string Resumo, string? Dica) Avaliar(IEnumerable<(string Fonte, int Id, int Qtd)> grupos, int total)
+    {
+        var graves = new List<string>();
+        var avisos = new List<string>();
+        var importantes = new List<string>();
+        foreach (var (fonte, id, qtd) in grupos)
         {
-            var fonte = g.Str("Fonte");
-            var id = (int)(g.Num("Id") ?? 0);
-            var qtd = (int)(g.Num("Qtd") ?? 0);
-            det.Add($"{qtd}× {fonte} (ID {id}): {g.Str("Msg")}");
             var grave = Graves.FirstOrDefault(x => x.id == id && x.fonte.Equals(fonte, StringComparison.OrdinalIgnoreCase));
-            if (grave.fonte is not null) graves.Add($"{qtd}× {grave.explicacao}");
+            if (grave.fonte is not null)
+            {
+                bool desligamento = grave.fonte == "Microsoft-Windows-Kernel-Power" && grave.id == 41;
+                (desligamento && qtd < DesligamentosParaCritico ? avisos : graves).Add($"{qtd}× {grave.explicacao}");
+            }
             var imp = Importantes.FirstOrDefault(x => x.id == id && x.fonte.Equals(fonte, StringComparison.OrdinalIgnoreCase));
             if (imp.fonte is not null) importantes.Add(imp.explicacao);
         }
 
         if (graves.Count > 0)
-            return Res(StatusTarefa.Critico, string.Join("; ", graves) + ".", det);
+            return (StatusTarefa.Critico, string.Join("; ", graves.Concat(avisos)) + ".", null);
+        if (avisos.Count > 0)
+            return (StatusTarefa.Aviso, string.Join("; ", avisos) + ". Se foi você que desligou pelo botão ou faltou luz, pode dispensar este aviso.",
+                "Se acontecer de novo sem motivo, pode ser travamento: veja se há tela azul, superaquecimento ou fonte com problema.");
         if (importantes.Count > 0)
-        {
-            det.Insert(0, "Dica: aumente o espaço da Restauração do Sistema em Proteção do Sistema > Configurar (ex.: 5–10% do disco).");
-            return Res(StatusTarefa.Aviso, string.Join("; ", importantes.Distinct()) + ".", det);
-        }
+            return (StatusTarefa.Aviso, string.Join("; ", importantes.Distinct()) + ".",
+                "Dica: aumente o espaço da Restauração do Sistema em Proteção do Sistema > Configurar (ex.: 5–10% do disco).");
         if (total > 25)
-            return Res(StatusTarefa.Aviso, $"{total} erros registrados nas últimas 24h (nenhum grave identificado).", det);
-        return Res(StatusTarefa.Ok, total == 0 ? "Nenhum erro registrado." : $"{total} erro(s) comum(ns), nada grave.", det);
+            return (StatusTarefa.Aviso, $"{total} erros registrados nas últimas 24h (nenhum grave identificado).", null);
+        return (StatusTarefa.Ok, total == 0 ? "Nenhum erro registrado." : $"{total} erro(s) comum(ns), nada grave.", null);
     }
 }
 

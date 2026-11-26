@@ -169,6 +169,7 @@ public sealed class AtualizacaoProgramas : Tarefa
         var det = new List<string>();
         int ok = 0;
         var falhas = new List<string>();
+        var aMao = new List<string>();
         foreach (var p in programas)
         {
             ct.ThrowIfCancellationRequested();
@@ -197,6 +198,13 @@ public sealed class AtualizacaoProgramas : Tarefa
                         + (unchecked((uint)r.Codigo) is 0x8A150109 or 0x8A15010A ? " — termina depois de reiniciar o PC" : ""));
                 ctx.Log($"   winget: {p.Nome} atualizado.");
             }
+            else if (SoAMao(r.Codigo))
+            {
+                // Não é falha passageira: o winget nunca vai conseguir trocar por cima. Repetir toda semana
+                // como "falhou" só gera alarme; o relatório diz o que fazer.
+                aMao.Add($"{p.Nome} ({p.Versao} → {p.Disponivel}): {ExplicarCodigo(r.Codigo)}");
+                ctx.Log($"   winget: {p.Nome} precisa ser atualizado à mão: {ExplicarCodigo(r.Codigo)} (0x{r.Codigo:X8})");
+            }
             else
             {
                 var motivo = ExplicarCodigo(r.Codigo);
@@ -207,14 +215,18 @@ public sealed class AtualizacaoProgramas : Tarefa
         }
 
         det.AddRange(falhas.Select(f => "FALHOU: " + f));
+        det.AddRange(aMao.Select(f => "À mão: " + f));
         det.AddRange(componentes.Select(c => $"Ignorado: {c.Nome} — o Windows ou a Microsoft atualizam sozinhos"));
         det.AddRange(cortados.Select(c => $"Ignorado: {c.Nome} — o winget não mostrou o identificador inteiro; atualize abrindo o próprio programa"));
         if (falhas.Count > 0)
         {
             det.Add("Os detalhes de cada falha estão em Registro (no menu do Zelo).");
             det.Add("Esses programas podem ser atualizados abrindo o próprio programa, ou pelo Terminal com \"winget upgrade --all\".");
-            return Res(StatusTarefa.Aviso, $"{ok} programa(s) atualizado(s); {falhas.Count} não puderam ser atualizados.", det);
+            return Res(StatusTarefa.Aviso, $"{ok} programa(s) atualizado(s); {falhas.Count} não puderam ser atualizados"
+                + (aMao.Count > 0 ? $"; {aMao.Count} só à mão." : "."), det);
         }
+        if (aMao.Count > 0)
+            return Res(StatusTarefa.Ok, $"{ok} programa(s) atualizado(s); {aMao.Count} só podem ser atualizados à mão (veja os detalhes).", det);
         return Res(StatusTarefa.Ok, $"{ok} programa(s) atualizado(s).", det);
     }
 
@@ -273,8 +285,12 @@ public sealed class AtualizacaoProgramas : Tarefa
     }
 
     /// <summary>O que significa cada código do winget, em português.</summary>
+    /// <summary>Códigos em que tentar de novo não adianta: só a pessoa resolve.</summary>
+    internal static bool SoAMao(int codigo) => unchecked((uint)codigo) is 0x8A15008E or 0x8A15010E;
+
     internal static string ExplicarCodigo(int codigo) => unchecked((uint)codigo) switch
     {
+        0x8A15008E => "a versão nova usa outro tipo de instalador que o instalado, e o winget não troca por cima. Se o programa veio da Microsoft Store, a Loja atualiza sozinha; senão, atualize pelo próprio programa ou baixe a versão nova no site do fabricante",
         0 => "ok",
         0x8A15002B => "nenhuma atualização aplicável",
         0x8A15000F => "a lista de programas do winget está incompleta (rode \"winget source reset --force\" num Terminal como administrador)",
@@ -290,7 +306,7 @@ public sealed class AtualizacaoProgramas : Tarefa
         0x8A150109 or 0x8A15010A => "precisa reiniciar o PC",
         0x8A15010C => "a instalação foi cancelada",
         0x8A15010D => "a versão nova já está instalada",
-        0x8A15010E => "a versão disponível é mais antiga que a instalada",
+        0x8A15010E => "a versão disponível no winget é mais antiga que a instalada; nada a fazer",
         0x8A15010F => "bloqueado por uma política do PC",
         0xC0000135 => "o winget não consegue rodar como serviço neste PC (falta um componente do Windows; atualize o \"Instalador de Aplicativo\" pela Microsoft Store)",
         0xFFFFFFFF => "o instalador do programa falhou sem dizer o motivo",

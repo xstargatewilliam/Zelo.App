@@ -96,3 +96,16 @@ public class WingetTests
         if (pacotes is not null) Assert.All(pacotes, p => Assert.Matches(@"^[\w.+-]{2,}…?$", p.Id));
     }
 }
+
+public class WingetSoAMaoTests
+{
+    /// <summary>0x8A15008E (tipo de instalador diferente) não é "falhou": só a pessoa resolve, e o relatório diz como.</summary>
+    [Fact]
+    public void TipoDeInstaladorDiferenteViraAMao()
+    {
+        int codigo = unchecked((int)0x8A15008E);
+        Assert.True(Zelo.Core.Tarefas.AtualizacaoProgramas.SoAMao(codigo));
+        Assert.Contains("outro tipo de instalador", Zelo.Core.Tarefas.AtualizacaoProgramas.ExplicarCodigo(codigo));
+        Assert.False(Zelo.Core.Tarefas.AtualizacaoProgramas.SoAMao(unchecked((int)0x8A150101))); // programa aberto: tenta na próxima
+    }
+}
