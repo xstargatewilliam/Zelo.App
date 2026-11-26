@@ -39,6 +39,15 @@ public sealed record Assinatura(bool Valida, string? Editor)
         return null;
     }
 
+    /// <summary>Uma atualização não pode misturar um serviço assinado com painel ou instalador adulterado.</summary>
+    public static string? ConferirPacote(Assinatura instalada, IEnumerable<(string Nome, Assinatura Nova)> componentes)
+    {
+        foreach (var (nome, nova) in componentes)
+            if (Conferir(instalada, nova) is { } erro)
+                return $"{nome}: {erro}";
+        return null;
+    }
+
     // ---------------------------------------------------------------- WinVerifyTrust
 
     private static readonly Guid AcaoVerificar = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE"); // WINTRUST_ACTION_GENERIC_VERIFY_V2

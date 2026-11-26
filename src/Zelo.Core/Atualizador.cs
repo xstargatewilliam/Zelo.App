@@ -330,13 +330,26 @@ public static class Atualizador
             !File.Exists(Path.Combine(publicado, "Painel", "Zelo.App.exe")))
             throw new InvalidOperationException("O pacote não tem os arquivos esperados do Zelo.");
 
-        // Assinatura digital: se a versão instalada é assinada, a nova tem que ser do mesmo editor.
+        // Autenticidade é uma propriedade do pacote inteiro: um serviço legítimo não torna
+        // seguros um painel ou instalador substituídos dentro do mesmo ZIP.
         var instalada = Assinatura.Ler(Path.Combine(AppContext.BaseDirectory, "Zelo.Service.exe"));
-        var nova = Assinatura.Ler(Path.Combine(publicado, "Servico", "Zelo.Service.exe"));
-        if (Assinatura.Conferir(instalada, nova) is { } recusa) throw new InvalidOperationException(recusa);
-        Registro.Escrever(nova.Valida
-            ? $"Atualização: pacote assinado digitalmente por {nova.Editor}."
-            : "Atualização: pacote sem assinatura digital (conferido pelo SHA-256).");
+        var caminhos = new (string Nome, string Caminho)[]
+        {
+            ("Serviço", Path.Combine(publicado, "Servico", "Zelo.Service.exe")),
+            ("Painel", Path.Combine(publicado, "Painel", "Zelo.App.exe")),
+            ("Instalador", Path.Combine(publicado, "Instalador", "Zelo.Instalador.exe")),
+        };
+        foreach (var (nome, caminho) in caminhos)
+            if (!File.Exists(caminho))
+                throw new InvalidOperationException($"O pacote não contém {nome}. Atualização cancelada.");
+
+        var novas = caminhos.Select(c => (c.Nome, Nova: Assinatura.Ler(c.Caminho))).ToArray();
+        if (Assinatura.ConferirPacote(instalada, novas) is { } recusa)
+            throw new InvalidOperationException(recusa);
+        if (novas.All(c => c.Nova.Valida))
+            Registro.Escrever($"Atualização: serviço, painel e instalador assinados por {novas[0].Nova.Editor}.");
+        else
+            Registro.Escrever("Atualização: há componentes sem assinatura digital; o SHA-256 não confirma o editor.");
         return publicado;
     }
 
