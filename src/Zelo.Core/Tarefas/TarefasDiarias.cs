@@ -378,7 +378,9 @@ public sealed class BackupIncremental : Tarefa
     public static string PastaVersoes(string destino) => Path.Combine(destino, "Zelo-Backup", "_versoes");
 
     /// <summary>
-    /// Antes do robocopy substituir uma cópia, move a cópia atual para a pasta de versões do dia.
+    /// Antes do robocopy substituir uma cópia, preserva a cópia atual no histórico.
+    /// NUNCA retira o arquivo do espelho antes de confirmar a nova cópia: se a sincronização
+    /// falhar, o backup anterior continua disponível no lugar de sempre.
     /// O robocopy (com /XO /FFT) só substitui quando o original é mais novo (tolerância de 2 s)
     /// ou quando o tamanho mudou com a mesma data; a regra aqui é a mesma.
     /// </summary>
@@ -401,11 +403,13 @@ public sealed class BackupIncremental : Tarefa
                 if (!vaiSubstituir) continue;
                 var destinoVersao = Path.Combine(pastaDoDia, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(destinoVersao)!);
-                File.Move(copia, destinoVersao, overwrite: true);
+                // Não substituir versões anteriores já guardadas. Se não for possível
+                // preservar esta versão, a origem inteira será ignorada nesta rodada.
+                File.Copy(copia, destinoVersao, overwrite: false);
                 movidos++;
             }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (IOException ex) { throw new IOException($"Não foi possível preservar {copia}: {ex.Message}", ex); }
+            catch (UnauthorizedAccessException ex) { throw new UnauthorizedAccessException($"Sem permissão para preservar {copia}: {ex.Message}", ex); }
         }
         return movidos;
     }
@@ -461,7 +465,9 @@ public sealed class BackupIncremental : Tarefa
         var falhas = 0;
         var versoes = 0;
         var robocopy = Path.Combine(Environment.SystemDirectory, "robocopy.exe");
-        var pastaDoDia = Path.Combine(PastaVersoes(c.DestinoBackup), DateTime.Now.ToString("yyyy-MM-dd_HHmm"));
+        // Um identificador por execução evita colisões entre backups no mesmo minuto.
+        // A pasta externa continua por data para a limpeza de retenção funcionar.
+        var pastaDoDia = Path.Combine(PastaVersoes(c.DestinoBackup), DateTime.Now.ToString("yyyy-MM-dd_HHmm"), Guid.NewGuid().ToString("N"));
 
         foreach (var origem in c.PastasBackup)
         {
@@ -472,7 +478,13 @@ public sealed class BackupIncremental : Tarefa
             {
                 try { versoes += GuardarVersoes(origem, destino, Path.Combine(pastaDoDia, NomeEspelho(origem)), ct); }
                 catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { det.Add($"{origem}: não foi possível guardar as versões anteriores ({ex.Message})."); }
+                catch (Exception ex)
+                {
+                    // Nunca sobrescrever a única cópia íntegra quando a preservação falhou.
+                    falhas++;
+                    det.Add($"{origem}: sincronização cancelada para proteger a cópia anterior; não foi possível guardar a versão antiga ({ex.Message}).");
+                    continue;
+                }
             }
             // /E subpastas, /XO não sobrescreve mais novos, /XJ ignora junções, /FFT tolera discos FAT/exFAT/NAS.
             var args = $"\"{origem.TrimEnd('\\')}\" \"{destino}\" /E /XO /XJ /FFT /R:1 /W:1 /MT:8 /NP /NDL /NJH";

@@ -629,7 +629,8 @@ public static class Otimizador
         var ajustes = ids.Distinct().Select(CatalogoOtimizacao.Por).Where(a => a is not null && a.Tipo is not (TipoAjuste.Programa or TipoAjuste.App)).Select(a => a!).ToList();
         if (ajustes.Any(PorUsuario) && !SidValido(sid)) return "Não foi possível identificar a sua conta do Windows.";
         if (!Coordenador.Iniciar("otimizacao")) return Coordenador.Explicar();
-        Andamento = new AndamentoOtimizacao { Rodando = true, Desfazendo = desfazer, Total = ajustes.Count, Etapa = "Começando" };
+        var andamento = new AndamentoOtimizacao { Rodando = true, Desfazendo = desfazer, Total = ajustes.Count, Etapa = "Começando" };
+        Andamento = andamento;
         _ = Task.Run(async () =>
         {
             try
@@ -644,10 +645,12 @@ public static class Otimizador
             }
             finally
             {
-                Andamento.Rodando = false;
-                Andamento.Fim = DateTime.Now;
-                Andamento.Etapa = "";
+                andamento.Fim = DateTime.Now;
+                andamento.Etapa = "";
+                // A operação só aparece como concluída depois de liberar o coordenador.
+                // A referência local impede afetar outra otimização que tenha começado no intervalo.
                 Coordenador.Encerrar("otimizacao");
+                andamento.Rodando = false;
             }
         });
         return null;

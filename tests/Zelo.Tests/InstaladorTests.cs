@@ -31,6 +31,53 @@ public class InstaladorTests : ComPastaTemporaria
         Assert.Null(Program.LocalizarPacote(Pasta));
     }
 
+    [Theory]
+    [InlineData(-1, false)] // executável interrompido por timeout
+    [InlineData(-2, false)]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
+    [InlineData(7, true)]
+    [InlineData(8, false)]
+    [InlineData(16, false)]
+    public void Codigo_do_robocopy_nao_confunde_timeout_com_sucesso(int codigo, bool esperado)
+    {
+        Assert.Equal(esperado, Program.CodigoRobocopyOk(codigo));
+    }
+
+    [Fact]
+    public void Restaura_a_versao_anterior_inclusive_o_instalador()
+    {
+        var salvo = Path.Combine(Pasta, "anterior");
+        var atual = Path.Combine(Pasta, "atual");
+        foreach (var parte in new[] { "Servico", "Painel", "Instalador" })
+        {
+            Directory.CreateDirectory(Path.Combine(salvo, parte));
+            Directory.CreateDirectory(Path.Combine(atual, parte));
+            File.WriteAllText(Path.Combine(salvo, parte, "versao.txt"), "antiga");
+            File.WriteAllText(Path.Combine(atual, parte, "versao.txt"), "nova");
+        }
+        Assert.True(Program.RestaurarVersao(salvo, atual));
+        foreach (var parte in new[] { "Servico", "Painel", "Instalador" })
+            Assert.Equal("antiga", File.ReadAllText(Path.Combine(atual, parte, "versao.txt")));
+    }
+
+    [Fact]
+    public void Restaura_versao_antiga_sem_instalador_removendo_o_novo()
+    {
+        var salvo = Path.Combine(Pasta, "anterior");
+        var atual = Path.Combine(Pasta, "atual");
+        foreach (var parte in new[] { "Servico", "Painel" })
+        {
+            Directory.CreateDirectory(Path.Combine(salvo, parte));
+            Directory.CreateDirectory(Path.Combine(atual, parte));
+            File.WriteAllText(Path.Combine(salvo, parte, "versao.txt"), "antiga");
+        }
+        Directory.CreateDirectory(Path.Combine(atual, "Instalador"));
+        File.WriteAllText(Path.Combine(atual, "Instalador", "novo.exe"), "nova");
+        Assert.True(Program.RestaurarVersao(salvo, atual));
+        Assert.False(Directory.Exists(Path.Combine(atual, "Instalador")));
+    }
+
     [Fact]
     public void EntradaEmAppsApontaParaODesinstalador()
     {
