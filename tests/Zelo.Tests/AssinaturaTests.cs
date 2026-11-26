@@ -37,6 +37,29 @@ public class AssinaturaTests : ComPastaTemporaria
     }
 
     [Fact]
+    public void Pacote_assinado_exige_que_painel_e_instalador_sejam_do_mesmo_editor()
+    {
+        var editor = new Assinatura(true, "SignPath Foundation");
+        var outro = new Assinatura(true, "Outro editor");
+        Assert.Null(Assinatura.ConferirPacote(editor, new[]
+        {
+            ("Serviço", editor), ("Painel", editor), ("Instalador", editor),
+        }));
+        var painelInvalido = Assinatura.ConferirPacote(editor, new[]
+        {
+            ("Serviço", editor), ("Painel", Assinatura.Nenhuma), ("Instalador", editor),
+        });
+        Assert.Contains("Painel", painelInvalido);
+        var instaladorDiferente = Assinatura.ConferirPacote(editor, new[]
+        {
+            ("Serviço", editor), ("Painel", editor), ("Instalador", outro),
+        });
+        Assert.Contains("Instalador", instaladorDiferente);
+        // Compatibilidade: instalar a primeira versão assinada ainda depende da origem e do SHA-256.
+        Assert.Null(Assinatura.ConferirPacote(Assinatura.Nenhuma, new[] { ("Serviço", editor), ("Painel", Assinatura.Nenhuma) }));
+    }
+
+    [Fact]
     public void RegrasDaAtualizacao()
     {
         var semAssinatura = Assinatura.Nenhuma;
