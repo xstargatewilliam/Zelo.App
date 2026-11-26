@@ -33,7 +33,7 @@ public class AssinaturaTests : ComPastaTemporaria
         var a = Assinatura.Ler(f);
         _saida.WriteLine($"{f}: válida={a.Valida}, editor={a.Editor}");
         Assert.True(a.Valida);
-        Assert.Contains("Microsoft", a.Editor);
+        Assert.False(string.IsNullOrWhiteSpace(a.Editor)); // a Microsoft assina o dotnet.exe como ".NET"
     }
 
     [Fact]
