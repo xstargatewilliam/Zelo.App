@@ -3,6 +3,7 @@
     <Project Path="src/Zelo.Core/Zelo.Core.csproj" />
     <Project Path="src/Zelo.Service/Zelo.Service.csproj" />
     <Project Path="src/Zelo.App/Zelo.App.csproj" />
+    <Project Path="src/Zelo.Instalador/Zelo.Instalador.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Zelo.Tests/Zelo.Tests.csproj" />

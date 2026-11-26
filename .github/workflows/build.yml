@@ -16,6 +16,12 @@ permissions:
 jobs:
   compilar:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: read   # a SignPath baixa o pacote sem assinatura deste trabalho
+    env:
+      # Só existe depois que o projeto for aprovado na SignPath Foundation (veja docs/ASSINATURA.md).
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     outputs:
       numero: ${{ steps.versao.outputs.numero }}
       publicada: ${{ steps.versao.outputs.publicada }}
@@ -52,6 +58,13 @@ jobs:
         run: |
           dotnet publish src/Zelo.Service/Zelo.Service.csproj -c Release -r win-x64 --self-contained true -o pacote/publicado/Servico --nologo
           dotnet publish src/Zelo.App/Zelo.App.csproj -c Release -r win-x64 --self-contained true -o pacote/publicado/Painel --nologo
+          dotnet publish src/Zelo.Instalador/Zelo.Instalador.csproj -c Release -r win-x64 -o instalador-aot --nologo
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          New-Item -ItemType Directory -Force pacote/publicado/Instalador | Out-Null
+          Copy-Item instalador-aot/Zelo.Instalador.exe pacote/publicado/Instalador/
+          Copy-Item instalador-aot/Zelo.Instalador.exe "pacote/Instalar Zelo.exe"
+          Copy-Item README.md, LICENSE -Destination pacote
+          Get-ChildItem pacote -Recurse -File -Filter *.exe | ForEach-Object { "{0,10:N0}  {1}" -f $_.Length, $_.FullName.Substring($PWD.Path.Length) }
 
       - name: Capturas das telas (só fora da main)
         if: github.event_name == 'push' && github.ref != 'refs/heads/main'
@@ -67,11 +80,70 @@ jobs:
           name: capturas
           path: capturas/*.png
 
+      # Assinatura digital pela SignPath Foundation: só na main, só para uma versão nova, e só depois
+      # que o projeto for aprovado (o segredo SIGNPATH_API_TOKEN existir). Cada pedido de assinatura
+      # precisa ser aprovado à mão na SignPath; o trabalho espera até 1 hora.
+      - name: Enviar o pacote sem assinatura
+        id: sem-assinatura
+        if: env.SIGNPATH_API_TOKEN != '' && github.ref == 'refs/heads/main' && steps.versao.outputs.publicada == 'False'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacote-sem-assinatura
+          path: pacote/
+
+      - name: Assinar pela SignPath
+        if: steps.sem-assinatura.outcome == 'success'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'Zelo.App' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.sem-assinatura.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: pacote-assinado
+          parameters: |
+            version: "${{ steps.versao.outputs.numero }}"
+
+      - name: Usar o pacote assinado
+        if: steps.sem-assinatura.outcome == 'success'
+        shell: pwsh
+        run: |
+          Remove-Item pacote -Recurse -Force
+          Move-Item pacote-assinado pacote
+          foreach ($f in 'pacote/Instalar Zelo.exe', 'pacote/publicado/Servico/Zelo.Service.exe', 'pacote/publicado/Painel/Zelo.App.exe') {
+            $s = Get-AuthenticodeSignature $f
+            Write-Host "$f : $($s.Status) $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne 'Valid') { Write-Error "$f não ficou assinado"; exit 1 }
+          }
+
+      # Instala, reinstala por cima e desinstala de verdade, como faria uma pessoa (sem perguntas).
+      - name: Testar instalação e desinstalação
+        shell: pwsh
+        run: |
+          function Conferir($cond, $msg) { if (-not $cond) { Write-Error "FALHOU: $msg"; exit 1 } else { Write-Host "ok: $msg" } }
+          $chave = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Zelo'
+          $p = Start-Process -FilePath "pacote/Instalar Zelo.exe" -ArgumentList '--automatico' -Wait -PassThru -NoNewWindow
+          Conferir ($p.ExitCode -eq 0) "instalação limpa terminou (código $($p.ExitCode))"
+          Conferir ((Get-Service Zelo).Status -eq 'Running') 'serviço rodando'
+          Conferir (Test-Path "$env:ProgramFiles\Zelo\Instalador\Zelo.Instalador.exe") 'desinstalador copiado'
+          Conferir ((Get-ItemProperty $chave).DisplayVersion -eq '${{ steps.versao.outputs.numero }}') 'entrada em Apps com a versão certa'
+          Conferir (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Zelo.lnk") 'atalho no Menu Iniciar'
+          $p = Start-Process -FilePath "pacote/Instalar Zelo.exe" -ArgumentList '--automatico' -Wait -PassThru -NoNewWindow
+          Conferir ($p.ExitCode -eq 0) 'reinstalação por cima terminou'
+          Conferir ((Get-Service Zelo).Status -eq 'Running') 'serviço rodando depois de reinstalar'
+          $p = Start-Process -FilePath "$env:ProgramFiles\Zelo\Instalador\Zelo.Instalador.exe" -ArgumentList '--desinstalar', '--automatico' -Wait -PassThru -NoNewWindow
+          Conferir ($p.ExitCode -eq 0) 'desinstalação terminou'
+          Start-Sleep -Seconds 8
+          Conferir (-not (Get-Service Zelo -ErrorAction SilentlyContinue)) 'serviço removido'
+          Conferir (-not (Test-Path $chave)) 'entrada em Apps removida'
+          Conferir (-not (Test-Path "$env:ProgramFiles\Zelo")) 'pasta do programa removida'
+          Conferir (Test-Path "$env:ProgramData\Zelo") 'dados mantidos (resposta padrão)'
+
       - name: Montar o pacote
         shell: pwsh
         run: |
-          Copy-Item INSTALAR.bat, DESINSTALAR.bat, README.md, LICENSE -Destination pacote
-          Copy-Item scripts -Destination pacote/scripts -Recurse
           Compress-Archive -Path pacote/* -DestinationPath Zelo-win-x64.zip
           $h = (Get-FileHash Zelo-win-x64.zip -Algorithm SHA256).Hash.ToLower()
           "$h  Zelo-win-x64.zip" | Out-File -Encoding ascii -NoNewline Zelo-win-x64.zip.sha256
@@ -125,4 +197,9 @@ jobs:
           files: |
             Zelo-win-x64.zip
             Zelo-win-x64.zip.sha256
+          body: |
+            **Instalar:** baixe o `Zelo-win-x64.zip`, clique com o botão direito → Extrair tudo, e abra `Instalar Zelo.exe`.
+            **Remover:** Configurações → Apps → Apps instalados → Zelo → Desinstalar.
+
+            Code signing policy: https://github.com/xstargatewilliam/Zelo.App/blob/main/docs/ASSINATURA.md
           generate_release_notes: true

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Instalador e desinstalador do Zelo: um .exe pequeno (compilado nativo) que pode ser assinado,
+       no lugar do INSTALAR.bat (um .bat não aceita assinatura digital). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Zelo.Instalador</RootNamespace>
+    <AssemblyName>Zelo.Instalador</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <ApplicationIcon>..\Zelo.App\Assets\zelo.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyTitle>Instalador do Zelo</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Zelo.Tests" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

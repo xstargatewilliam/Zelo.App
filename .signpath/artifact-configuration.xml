@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuração de artefato da SignPath para o Zelo (copiar para o projeto na SignPath:
+     Projects → Zelo.App → Artifact Configurations → Edit). O pacote enviado pelo GitHub Actions
+     é o conteúdo da pasta "pacote" compactado em .zip pelo upload-artifact. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" />
+  </parameters>
+  <zip-file>
+    <pe-file path="Instalar Zelo.exe" product-name="Zelo" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <directory path="publicado">
+      <pe-file-set>
+        <include path="Instalador/Zelo.Instalador.exe" product-name="Zelo" product-version="${version}" />
+        <include path="Servico/Zelo.Service.exe" product-name="Zelo" product-version="${version}" />
+        <include path="Servico/Zelo.Service.dll" product-name="Zelo" product-version="${version}" />
+        <include path="Servico/Zelo.Core.dll" product-name="Zelo" product-version="${version}" />
+        <include path="Painel/Zelo.App.exe" product-name="Zelo" product-version="${version}" />
+        <include path="Painel/Zelo.App.dll" product-name="Zelo" product-version="${version}" />
+        <include path="Painel/Zelo.Core.dll" product-name="Zelo" product-version="${version}" />
+        <for-each>
+          <authenticode-sign />
+        </for-each>
+      </pe-file-set>
+    </directory>
+  </zip-file>
+</artifact-configuration>

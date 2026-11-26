@@ -306,6 +306,14 @@ public static class Atualizador
         if (!File.Exists(Path.Combine(publicado, "Servico", "Zelo.Service.exe")) ||
             !File.Exists(Path.Combine(publicado, "Painel", "Zelo.App.exe")))
             throw new InvalidOperationException("O pacote não tem os arquivos esperados do Zelo.");
+
+        // Assinatura digital: se a versão instalada é assinada, a nova tem que ser do mesmo editor.
+        var instalada = Assinatura.Ler(Path.Combine(AppContext.BaseDirectory, "Zelo.Service.exe"));
+        var nova = Assinatura.Ler(Path.Combine(publicado, "Servico", "Zelo.Service.exe"));
+        if (Assinatura.Conferir(instalada, nova) is { } recusa) throw new InvalidOperationException(recusa);
+        Registro.Escrever(nova.Valida
+            ? $"Atualização: pacote assinado digitalmente por {nova.Editor}."
+            : "Atualização: pacote sem assinatura digital (conferido pelo SHA-256).");
         return publicado;
     }
 
@@ -331,7 +339,9 @@ public static class Atualizador
             $recusada = {{Q(ArquivoRecusada)}}
             # 1) Guarda a versão atual. Sem essa cópia não há como voltar: então não instala nada.
             $copiaOk = $true
-            foreach ($p in 'Servico', 'Painel') {
+            $partes = @('Servico', 'Painel', 'Instalador')
+            foreach ($p in $partes) {
+              if (-not (Test-Path "$dest\$p")) { continue }
               robocopy "$dest\$p" "$anterior\$p" /MIR /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
               if ($LASTEXITCODE -ge 8) { $copiaOk = $false }
             }
@@ -344,7 +354,7 @@ public static class Atualizador
               Log ("$motivo Restaurando a versão anterior.")
               Stop-Service -Name Zelo -Force -ErrorAction SilentlyContinue
               try { (Get-Service -Name Zelo).WaitForStatus('Stopped', '00:01:00') } catch {}
-              foreach ($p in 'Servico', 'Painel') { robocopy "$anterior\$p" "$dest\$p" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null }
+              foreach ($p in $partes) { if (Test-Path "$anterior\$p") { robocopy "$anterior\$p" "$dest\$p" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null } }
               Start-Service -Name Zelo -ErrorAction SilentlyContinue
               try { (Get-Service -Name Zelo).WaitForStatus('Running', '00:01:00'); Log 'Versão anterior restaurada e rodando.' }
               catch { Log 'ATENÇÃO: a versão anterior foi restaurada, mas o serviço não voltou a rodar. Rode o INSTALAR.bat da versão mais recente.' }
@@ -352,7 +362,8 @@ public static class Atualizador
             $fim = 'Atualização concluída: a versão {{versao}} está rodando.' 
             # 2) Troca os arquivos.
             $falhou = $false
-            foreach ($p in 'Servico', 'Painel') {
+            foreach ($p in $partes) {
+              if (-not (Test-Path "$novo\$p")) { continue }
               robocopy "$novo\$p" "$dest\$p" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
               if ($LASTEXITCODE -ge 8) { $falhou = $true }
             }
@@ -375,6 +386,12 @@ public static class Atualizador
                 $fim = 'Atualização desfeita: a versão {{versao}} não iniciou e o Zelo voltou para a anterior. Ela não será instalada sozinha de novo.' 
               } else {
                 Remove-Item $recusada -ErrorAction SilentlyContinue
+                # Entrada em Configurações → Apps (versões instaladas pelo INSTALAR.bat ganham a entrada aqui).
+                $inst = "$dest\Instalador\Zelo.Instalador.exe"
+                if (Test-Path $inst) {
+                  try { & $inst --registrar --automatico; Log 'Entrada do Zelo em Configurações → Apps atualizada.' }
+                  catch { Log ('Não foi possível atualizar a entrada em Apps: ' + $_.Exception.Message) }
+                }
               }
             }
             # Reabre o painel na bandeja de quem estiver logado (tarefa de uso único).

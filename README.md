@@ -6,7 +6,15 @@ Serviço do Windows + painel que cuida da manutenção do PC sozinho, quando voc
 
 ## Instalação (uma vez)
 
-**Jeito mais fácil:** na página **Releases** do repositório, baixe o `Zelo-win-x64.zip` mais recente. Ele já vem compilado: extraia, dê dois cliques em **`INSTALAR.bat`** e pronto, sem precisar do .NET.
+**Jeito mais fácil:**
+
+1. Na página **[Releases](https://github.com/xstargatewilliam/Zelo.App/releases/latest)**, em **Assets**, baixe o `Zelo-win-x64.zip`.
+2. Clique com o botão direito no arquivo baixado → **Extrair tudo** → **Extrair**.
+3. Na pasta extraída, abra **`Instalar Zelo.exe`** e clique em **Sim** no aviso do Windows.
+
+Ele já vem compilado (não precisa do .NET). Para atualizar à mão, é o mesmo caminho: o instalador troca a versão por cima, guarda a anterior e volta para ela se algo der errado na cópia.
+
+**Para remover:** Configurações → Apps → Apps instalados → **Zelo** → Desinstalar. Ele pergunta se você quer voltar os ajustes da aba Otimizar antes de remover. Seus arquivos de backup nunca são apagados.
 
 **A partir do código-fonte:**
 
@@ -22,7 +30,11 @@ Na primeira vez leva uns 5 minutos, por causa dos downloads.
 
 Se a compilação der erro, copie as mensagens vermelhas da janela e envie para correção.
 
-Para remover: **`DESINSTALAR.bat`**. Ele pergunta se você quer voltar os ajustes da aba Otimizar antes de remover. Seus arquivos de backup nunca são apagados.
+Instalado pelo código-fonte, o Zelo é removido pelo **`DESINSTALAR.bat`** (depois da primeira atualização automática, ele também aparece em Configurações → Apps).
+
+## Code signing policy (assinatura digital)
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). O pedido do Zelo ao programa está em andamento; até a aprovação, as versões saem sem assinatura. Detalhes, papéis e o que é assinado: **[Code signing policy](docs/ASSINATURA.md)** · **[Privacidade](docs/PRIVACIDADE.md)** (o Zelo não envia nenhum dado seu a ninguém).
 
 ## Depois de instalar
 
@@ -45,7 +57,7 @@ Uma vez por dia o serviço consulta a página **Releases** deste repositório. Q
 5. confere se a versão nova continua rodando por 30 segundos; se não, volta para a anterior e não tenta mais aquela versão sozinho;
 6. reabre o painel na bandeja.
 
-Nunca atualiza no meio de uma vistoria ou otimização, e a instalação automática só acontece no horário livre do seu perfil, com o PC parado, sem pausa ativa (e na tomada, se essa opção estiver ligada); fora disso, o Zelo só avisa que há versão nova. A consulta usa o link comum de "última versão" do GitHub, que não tem o limite de 60 consultas por hora da API (comum quando a operadora divide o mesmo endereço de internet entre vários clientes). Se você instalar uma versão à mão pelo `INSTALAR.bat`, os avisos guardados da versão anterior somem sozinhos. Para desligar, desligue **O próprio Zelo** em Ajustes → Atualizações; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização** (Ajustes → Sobre) instala na hora. Qualquer pessoa do PC pode pedir a atualização: o Zelo só instala o pacote oficial publicado aqui, conferido pelo SHA-256.
+Nunca atualiza no meio de uma vistoria ou otimização, e a instalação automática só acontece no horário livre do seu perfil, com o PC parado, sem pausa ativa (e na tomada, se essa opção estiver ligada); fora disso, o Zelo só avisa que há versão nova. A consulta usa o link comum de "última versão" do GitHub, que não tem o limite de 60 consultas por hora da API (comum quando a operadora divide o mesmo endereço de internet entre vários clientes). Se você instalar uma versão à mão pelo `Instalar Zelo.exe`, os avisos guardados da versão anterior somem sozinhos. Para desligar, desligue **O próprio Zelo** em Ajustes → Atualizações; o painel continua avisando quando houver versão nova, e o botão **Procurar atualização** (Ajustes → Sobre) instala na hora. Qualquer pessoa do PC pode pedir a atualização: o Zelo só instala o pacote oficial publicado aqui, conferido pelo SHA-256 e, quando a versão instalada é assinada, pela assinatura digital do mesmo editor.
 
 **Para quem mantém o projeto:** suba o número em `<Version>` no `Directory.Build.props` e envie para o GitHub. O GitHub Actions compila e publica a versão em Releases sozinho.
 

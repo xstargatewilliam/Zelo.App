@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Zelo.Core\Zelo.Core.csproj" />
+    <ProjectReference Include="..\..\src\Zelo.Instalador\Zelo.Instalador.csproj" />
   </ItemGroup>
 
 </Project>
