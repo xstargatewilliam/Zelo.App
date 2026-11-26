@@ -71,6 +71,29 @@ public static class Atualizador
         catch (Exception ex) { Registro.Escrever("Atualização: não foi possível conferir o estado guardado: " + ex.Message); }
     }
 
+    /// <summary>
+    /// A atualização feita por uma versão antiga (até a 1.5.6) só trocava o serviço e o painel. Se o pacote
+    /// desta versão ainda está na pasta de atualização (protegida, já conferido pelo SHA-256), copia o
+    /// instalador/desinstalador para a pasta do Zelo e cria a entrada em Configurações → Apps.
+    /// </summary>
+    public static void CompletarInstalador()
+    {
+        try
+        {
+            var dest = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Zelo", "Instalador", "Zelo.Instalador.exe");
+            var noPacote = Path.Combine(Pasta, "extraido", "publicado", "Instalador", "Zelo.Instalador.exe");
+            if (File.Exists(dest) || !File.Exists(noPacote)) return;
+            var versaoDoPacote = FileVersionInfo.GetVersionInfo(noPacote).ProductVersion?.Split('+')[0];
+            if (versaoDoPacote != VersaoAtual.ToString(3)) return; // só o instalador desta mesma versão
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.Copy(noPacote, dest);
+            using var p = Process.Start(new ProcessStartInfo(dest, "--registrar --automatico") { UseShellExecute = false, CreateNoWindow = true })!;
+            p.WaitForExit(30_000);
+            Registro.Escrever("Atualização: desinstalador instalado; o Zelo agora aparece em Configurações → Apps.");
+        }
+        catch (Exception ex) { Registro.Escrever("Atualização: não foi possível instalar o desinstalador: " + ex.Message); }
+    }
+
     /// <summary>Limpa o que ficou de outra versão. Devolve true se mudou algo.</summary>
     internal static bool Conferir(EstadoAtualizacao e, Version atual)
     {

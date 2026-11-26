@@ -22,6 +22,7 @@ public sealed class Agendador : BackgroundService
         _ = Agenda.Instalacao; // registra a data da primeira execução
         Registro.Escrever($"Serviço iniciado (versão {Atualizador.VersaoAtual.ToString(3)}).");
         Atualizador.ConferirAposIniciar();
+        Atualizador.CompletarInstalador();
 
         // Dá um tempo para o Windows terminar de iniciar.
         try { await Task.Delay(TimeSpan.FromMinutes(3), parar); } catch (OperationCanceledException) { return; }
