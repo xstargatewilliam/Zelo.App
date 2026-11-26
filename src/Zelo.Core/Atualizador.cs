@@ -46,6 +46,47 @@ public static class Atualizador
         public string? UltimoErro { get; set; }
         public DateTime? UltimaInstalacao { get; set; }
         public string? VersaoInstalada { get; set; }
+        /// <summary>Versão do Zelo que fez a última consulta (para saber se o estado é de outra versão).</summary>
+        public string? VersaoNaVerificacao { get; set; }
+    }
+
+    /// <summary>
+    /// Chamado quando o serviço inicia. Se a versão mudou desde a última consulta (atualização automática
+    /// ou instalação à mão), o erro e o "versão nova disponível" guardados são de outra versão e somem;
+    /// a próxima consulta acontece logo. Uma versão marcada como recusada que agora roda deixa de ser recusada.
+    /// </summary>
+    public static void ConferirAposIniciar()
+    {
+        try
+        {
+            var atual = VersaoAtual;
+            var estado = LerEstado();
+            if (Conferir(estado, atual)) GravarEstado(estado);
+            if (VersaoRecusada() is { } recusada && recusada <= atual)
+            {
+                File.Delete(ArquivoRecusada);
+                Registro.Escrever($"Atualização: a versão {recusada.ToString(3)} agora roda neste PC; a marca de versão recusada foi retirada.");
+            }
+        }
+        catch (Exception ex) { Registro.Escrever("Atualização: não foi possível conferir o estado guardado: " + ex.Message); }
+    }
+
+    /// <summary>Limpa o que ficou de outra versão. Devolve true se mudou algo.</summary>
+    internal static bool Conferir(EstadoAtualizacao e, Version atual)
+    {
+        bool mudou = false;
+        if (e.VersaoDisponivel is not null && (LerVersao(e.VersaoDisponivel) is not { } disp || disp <= atual))
+        {
+            e.VersaoDisponivel = null;
+            mudou = true;
+        }
+        if (e.VersaoNaVerificacao != atual.ToString(3) && (e.UltimoErro is not null || e.UltimaVerificacao is not null))
+        {
+            e.UltimoErro = null;
+            e.UltimaVerificacao = null; // consulta de novo logo
+            mudou = true;
+        }
+        return mudou;
     }
 
     public static EstadoAtualizacao LerEstado() => Estado.Ler<EstadoAtualizacao>("atualizacao") ?? new EstadoAtualizacao();
@@ -156,10 +197,11 @@ public static class Atualizador
         var estado = LerEstado();
         try
         {
+            var atual = VersaoAtual;
+            estado.VersaoNaVerificacao = atual.ToString(3);
             var remota = await ConsultarAsync(ct);
             estado.UltimaVerificacao = DateTime.Now;
             estado.UltimoErro = null;
-            var atual = VersaoAtual;
 
             // Uma versão que já falhou ao iniciar neste PC não é reinstalada sozinha (evita um ciclo de falhas).
             var recusada = VersaoRecusada();
@@ -208,6 +250,7 @@ public static class Atualizador
         catch (Exception ex)
         {
             estado.UltimaVerificacao = DateTime.Now;
+            estado.VersaoNaVerificacao = VersaoAtual.ToString(3);
             estado.UltimoErro = "A última consulta ao GitHub falhou: " + ExplicarErro(ex);
             GravarEstado(estado);
             Registro.Escrever("Falha na atualização: " + ex.Message);
@@ -303,7 +346,10 @@ public static class Atualizador
               try { (Get-Service -Name Zelo).WaitForStatus('Stopped', '00:01:00') } catch {}
               foreach ($p in 'Servico', 'Painel') { robocopy "$anterior\$p" "$dest\$p" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null }
               Start-Service -Name Zelo -ErrorAction SilentlyContinue
+              try { (Get-Service -Name Zelo).WaitForStatus('Running', '00:01:00'); Log 'Versão anterior restaurada e rodando.' }
+              catch { Log 'ATENÇÃO: a versão anterior foi restaurada, mas o serviço não voltou a rodar. Rode o INSTALAR.bat da versão mais recente.' }
             }
+            $fim = 'Atualização concluída: a versão {{versao}} está rodando.' 
             # 2) Troca os arquivos.
             $falhou = $false
             foreach ($p in 'Servico', 'Painel') {
@@ -312,6 +358,7 @@ public static class Atualizador
             }
             if ($falhou) {
               Voltar 'Falha ao copiar os arquivos novos.'
+              $fim = 'Atualização desfeita: a versão {{versao}} não foi instalada.'
             } else {
               Log 'Arquivos da versão {{versao}} instalados.'
               # 3) Confere se a versão nova inicia e continua rodando por 30 segundos.
@@ -325,6 +372,7 @@ public static class Atualizador
               if (-not $saudavel) {
                 Voltar 'A versão {{versao}} não iniciou direito.'
                 Set-Content -Path $recusada -Value '{{versao}}' -Encoding UTF8
+                $fim = 'Atualização desfeita: a versão {{versao}} não iniciou e o Zelo voltou para a anterior. Ela não será instalada sozinha de novo.' 
               } else {
                 Remove-Item $recusada -ErrorAction SilentlyContinue
               }
@@ -338,7 +386,7 @@ public static class Atualizador
               Start-Sleep -Seconds 10
               Unregister-ScheduledTask -TaskName 'ZeloReabrirPainel' -Confirm:$false
             } catch { Log ('Painel não pôde ser reaberto automaticamente: ' + $_.Exception.Message) }
-            Log 'Atualização concluída.'
+            Log $fim
             """;
         File.WriteAllText(script, ps, new UTF8Encoding(true));
 

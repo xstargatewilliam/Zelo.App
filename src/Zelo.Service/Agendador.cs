@@ -20,7 +20,8 @@ public sealed class Agendador : BackgroundService
         try { await Caminhos.ProtegerDadosAsync(parar); }
         catch (Exception ex) when (ex is not OperationCanceledException) { Registro.Escrever("Aviso: falha ao proteger a pasta de dados: " + ex.Message); }
         _ = Agenda.Instalacao; // registra a data da primeira execução
-        Registro.Escrever("Serviço iniciado.");
+        Registro.Escrever($"Serviço iniciado (versão {Atualizador.VersaoAtual.ToString(3)}).");
+        Atualizador.ConferirAposIniciar();
 
         // Dá um tempo para o Windows terminar de iniciar.
         try { await Task.Delay(TimeSpan.FromMinutes(3), parar); } catch (OperationCanceledException) { return; }
@@ -60,8 +61,18 @@ public sealed class Agendador : BackgroundService
         {
             // Instalar reinicia o serviço e o painel: só no horário livre do perfil e na tomada.
             // Fora dele, só verifica; a instalação fica para o próximo horário livre.
+            // Também respeita a pausa pedida pela pessoa e o PC em uso: instalar fecha o painel.
             var podeInstalar = cfg.AtualizacaoAutomatica && cfg.DentroDaJanela(DateTime.Now)
-                               && (!cfg.SomenteNaTomada || Nativo.NaTomada());
+                               && (!cfg.SomenteNaTomada || Nativo.NaTomada()) && Pausa.Ate is null;
+            if (podeInstalar && cfg.ExigirOcioso)
+            {
+                var cpu = await Nativo.UsoCpuAsync(TimeSpan.FromSeconds(20), parar);
+                if (cpu > cfg.LimiteCpuOcioso)
+                {
+                    podeInstalar = false;
+                    Anotar($"Atualização do Zelo: se houver versão nova, ela espera o PC ficar parado para instalar (CPU {cpu:0}%).");
+                }
+            }
             var msg = await Atualizador.VerificarEAplicarAsync(podeInstalar, parar);
             Registro.Escrever("Atualização: " + msg);
             if (Atualizador.EmAndamento || msg.StartsWith("Instalando")) return; // o serviço vai reiniciar
@@ -119,11 +130,13 @@ public sealed class Agendador : BackgroundService
         catch (OperationCanceledException) { }
     }
 
-    private void Esperando(Rotina r, string motivo)
+    private void Esperando(Rotina r, string motivo) => Anotar($"Rotina {r.Nome()} vencida, aguardando: {motivo}.");
+
+    private void Anotar(string linha)
     {
         // Evita encher o log: no máximo uma linha por hora.
         if (DateTime.Now - _ultimoLogEspera < TimeSpan.FromHours(1)) return;
         _ultimoLogEspera = DateTime.Now;
-        Registro.Escrever($"Rotina {r.Nome()} vencida, aguardando: {motivo}.");
+        Registro.Escrever(linha);
     }
 }

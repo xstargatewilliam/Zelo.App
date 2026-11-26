@@ -257,7 +257,7 @@ public sealed class ServidorPipe : BackgroundService
                     try { Registro.Escrever("Atualização manual: " + await Atualizador.VerificarEAplicarAsync(true, _vida.ApplicationStopping)); }
                     catch (Exception ex) { Registro.Escrever("Erro na atualização manual: " + ex.Message); }
                 });
-                return new Resposta { Mensagem = "Procurando atualização no GitHub..." };
+                return new Resposta { Mensagem = "Procurando atualização no GitHub… Se houver versão nova, o Zelo instala e reinicia sozinho em seguida." };
 
             case "dispensar":
                 if (string.IsNullOrWhiteSpace(p.TarefaId) || Catalogo.Todas.All(t => t.Id != p.TarefaId))

@@ -156,8 +156,11 @@ public sealed class AtualizacaoProgramas : Tarefa
         ctx.Log($"   winget: {pacotes.Count} programa(s) com atualização: {string.Join(", ", pacotes.Select(p => p.Id))}");
         if (pacotes.Count == 0) return Res(StatusTarefa.Ok, "Todos os programas já estavam atualizados.");
 
-        var componentes = pacotes.Where(p => Frameworks.Any(fw => p.Id.StartsWith(fw, StringComparison.OrdinalIgnoreCase))).ToList();
-        var programas = pacotes.Except(componentes).ToList();
+        var componentes = pacotes.Where(p => Frameworks.Any(fw => p.Id.StartsWith(fw.TrimEnd('…'), StringComparison.OrdinalIgnoreCase))).ToList();
+        // O winget corta Ids longos com "…" quando a tabela não cabe: esses não dá para pedir pelo Id exato.
+        var cortados = pacotes.Except(componentes).Where(p => p.Id.EndsWith('…')).ToList();
+        var programas = pacotes.Except(componentes).Except(cortados).ToList();
+        foreach (var c in cortados) ctx.Log($"   winget: {c.Nome} ficou de fora: o winget cortou o identificador ({c.Id}).");
         if (ctx.Simulacao)
             return Res(StatusTarefa.Ok, $"[Simulação] {programas.Count} programa(s) com atualização.",
                 programas.Select(p => $"{p.Nome}: {p.Versao} → {p.Disponivel}").ToList());
@@ -187,7 +190,7 @@ public sealed class AtualizacaoProgramas : Tarefa
                 continue;
             }
 
-            if (r.Codigo == 0 || InstalouComSucesso(r.Saida) || unchecked((uint)r.Codigo) is 0x8A150109 or 0x8A15010A)
+            if (r.Codigo == 0 || InstalouComSucesso(r.Saida) || unchecked((uint)r.Codigo) is 0x8A150109 or 0x8A15010A or 0x8A15010D)
             {
                 ok++;
                 det.Add($"Atualizado: {p.Nome} ({p.Versao} → {p.Disponivel})"
@@ -205,6 +208,7 @@ public sealed class AtualizacaoProgramas : Tarefa
 
         det.AddRange(falhas.Select(f => "FALHOU: " + f));
         det.AddRange(componentes.Select(c => $"Ignorado: {c.Nome} — o Windows ou a Microsoft atualizam sozinhos"));
+        det.AddRange(cortados.Select(c => $"Ignorado: {c.Nome} — o winget não mostrou o identificador inteiro; atualize abrindo o próprio programa"));
         if (falhas.Count > 0)
         {
             det.Add("Os detalhes de cada falha estão em Registro (no menu do Zelo).");
@@ -261,7 +265,8 @@ public sealed class AtualizacaoProgramas : Tarefa
             var versao = Corte(l, cVer, cDisp);
             var disp = Corte(l, cDisp, cFim);
             // A linha de rodapé ("2 atualizações disponíveis.") não tem um Id válido nessa coluna.
-            if (!System.Text.RegularExpressions.Regex.IsMatch(id, @"^[\w.+-]{2,}$") || versao.Length == 0 || disp.Length == 0) continue;
+            // Um Id cortado ("Microsoft.VCRedist.2015+…") entra na lista para ser relatado, não atualizado.
+            if (!System.Text.RegularExpressions.Regex.IsMatch(id, @"^[\w.+-]{2,}…?$") || versao.Length == 0 || disp.Length == 0) continue;
             pacotes.Add(new PacoteWinget(Corte(l, 0, cId), id, versao, disp));
         }
         return pacotes;

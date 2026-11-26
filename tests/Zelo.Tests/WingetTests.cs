@@ -36,7 +36,13 @@ public class WingetTests
         Assert.Equal("23.01", p[0].Versao);
         Assert.Equal("24.08", p[0].Disponivel);
         Assert.Equal("7-Zip 23.01 (x64)", p[0].Nome);
+        // O Id cortado é lido (para ser relatado), mas não confunde com um Id de verdade.
+        Assert.Equal("Microsoft.VCRedist.2015+…", p[2].Id);
     }
+
+    [Fact]
+    public void Versao_ja_instalada_conta_como_atualizado() =>
+        Assert.Contains("já está instalada", AtualizacaoProgramas.ExplicarCodigo(unchecked((int)0x8A15010D)));
 
     [Fact]
     public void Le_a_tabela_em_portugues_com_barra_de_progresso()
@@ -87,6 +93,6 @@ public class WingetTests
         _saida.WriteLine($"winget: {winget}; código 0x{r.Codigo:X8} ({AtualizacaoProgramas.ExplicarCodigo(r.Codigo)}); pacotes lidos: {(pacotes is null ? "sem tabela" : string.Join(", ", pacotes.Select(p => p.Id)))}");
         foreach (var l in r.Linhas(12)) _saida.WriteLine("  " + l);
         if (r.Saida.Contains("---") && r.Saida.Contains(" Id ")) Assert.NotNull(pacotes);
-        if (pacotes is not null) Assert.All(pacotes, p => Assert.Matches(@"^[\w.+-]{2,}$", p.Id));
+        if (pacotes is not null) Assert.All(pacotes, p => Assert.Matches(@"^[\w.+-]{2,}…?$", p.Id));
     }
 }

@@ -419,6 +419,19 @@ public partial class MainWindow
                     cancelado = true;
                     linhas.Add(LinhaResultado.Falhou("Ajustes do Windows não aplicados", r.Mensagem ?? "Não deu certo."));
                 }
+                // Recusar o aviso do Windows (ou o "Não aplicar") costuma querer dizer "pare". Apps e programas
+                // não precisam de administrador, mas só seguem se a pessoa confirmar de novo.
+                if ((cancelado || fim is null) && apps.Count + programas.Count > 0
+                    && !await PerguntarAsync("Continuar com o resto?",
+                        "Os ajustes do Windows não foram aplicados. Quer seguir com "
+                        + string.Join(" e ", new[] { apps.Count > 0 ? $"a remoção de {apps.Count} grupo(s) de apps" : "", programas.Count > 0 ? $"a instalação de {programas.Count} programa(s)" : "" }.Where(x => x.Length > 0))
+                        + "? Essa parte não precisa da confirmação do Windows.",
+                        null, "Continuar", "Parar aqui", TomDialogo.Atencao))
+                {
+                    linhas.Add(LinhaResultado.Info("Apps e programas não foram mexidos", "Você escolheu parar."));
+                    apps.Clear();
+                    programas.Clear();
+                }
                 if (fim is not null)
                 {
                     if (fim.Resultado is not null) resumo.Add(fim.Resultado);
@@ -444,7 +457,9 @@ public partial class MainWindow
                     {
                         removidos++;
                         linhas.Add(LinhaResultado.Certo("Removido: " + app.Nome));
-                        await RegistrarAsync($"Otimizar: {app.Nome} removido ({string.Join(", ", res.Removidos)}).");
+                        await RegistrarAsync(res.Removidos.Count == 0
+                            ? $"Otimizar: {app.Nome}: nenhum desses apps estava instalado."
+                            : $"Otimizar: {app.Nome}: removido(s) {string.Join(", ", res.Removidos)}.");
                     }
                     else
                     {

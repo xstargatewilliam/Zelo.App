@@ -27,6 +27,49 @@ public class AtualizadorTests
         Assert.DoesNotContain("403", msg);
     }
 
+    /// <summary>Depois de instalar à mão a versão nova, o erro e o "versão disponível" antigos somem.</summary>
+    [Fact]
+    public void EstadoDeOutraVersaoSomeAoIniciar()
+    {
+        var e = new Atualizador.EstadoAtualizacao
+        {
+            UltimaVerificacao = DateTime.Now.AddMinutes(-5),
+            UltimoErro = "A última consulta ao GitHub falhou: 403",
+            VersaoDisponivel = "1.5.5",
+            VersaoNaVerificacao = null, // estado gravado pela 1.5.3, que não tinha esse campo
+        };
+        Assert.True(Atualizador.Conferir(e, new Version(1, 5, 5)));
+        Assert.Null(e.UltimoErro);
+        Assert.Null(e.VersaoDisponivel);
+        Assert.Null(e.UltimaVerificacao); // força uma consulta logo
+    }
+
+    /// <summary>Na mesma versão (por exemplo, depois de uma atualização desfeita), o aviso continua.</summary>
+    [Fact]
+    public void EstadoDaMesmaVersaoFica()
+    {
+        var quando = DateTime.Now.AddHours(-1);
+        var e = new Atualizador.EstadoAtualizacao
+        {
+            UltimaVerificacao = quando,
+            UltimoErro = "A versão 1.6.0 não iniciou neste PC e foi desfeita.",
+            VersaoDisponivel = "1.6.0",
+            VersaoNaVerificacao = "1.5.6",
+        };
+        Assert.False(Atualizador.Conferir(e, new Version(1, 5, 6)));
+        Assert.Equal("1.6.0", e.VersaoDisponivel);
+        Assert.NotNull(e.UltimoErro);
+        Assert.Equal(quando, e.UltimaVerificacao);
+    }
+
+    [Fact]
+    public void VersaoDisponivelInvalidaSome()
+    {
+        var e = new Atualizador.EstadoAtualizacao { VersaoDisponivel = "abc", VersaoNaVerificacao = "1.5.6" };
+        Assert.True(Atualizador.Conferir(e, new Version(1, 5, 6)));
+        Assert.Null(e.VersaoDisponivel);
+    }
+
     /// <summary>Consulta de verdade, sem a API: a versão publicada e o .sha256 precisam ser encontrados.</summary>
     [Fact]
     public async Task EncontraAUltimaVersaoSemUsarAApi()
