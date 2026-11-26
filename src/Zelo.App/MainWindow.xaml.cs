@@ -484,8 +484,8 @@ public partial class MainWindow : Window
                 ? (e.DentroDaJanela ? $"Próxima: {nome}, assim que o PC estiver livre." : $"Próxima: {nome}, no próximo horário livre do seu perfil.")
                 : $"Próxima: {nome}, {Palavras.Quando(quando)}.");
         }
-        bool versao = e.VersaoDisponivel is not null;
-        if (versao) partes.Add($"Versão {e.VersaoDisponivel} disponível: instala sozinha no próximo horário livre.");
+        bool versao = VersaoNova(e) is not null;
+        if (versao) partes.Add($"Versão {VersaoNova(e)} disponível: instala sozinha no próximo horário livre.");
         TxtFaixa.Text = string.Join("  ·  ", partes);
         BtnFaixaAtualizar.Visibility = versao ? Visibility.Visible : Visibility.Collapsed;
         FaixaInfo.Visibility = partes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -503,16 +503,20 @@ public partial class MainWindow : Window
             : "O Zelo trabalha sempre que o PC está parado, a qualquer hora.",
     };
 
+    /// <summary>A versão disponível, só se for mesmo mais nova que a instalada (o estado guardado pode ser antigo).</summary>
+    private static string? VersaoNova(EstadoServico e) =>
+        e.VersaoDisponivel is { } d && Version.TryParse(d, out var disp) && Version.TryParse(e.Versao, out var atual) && disp > atual ? d : null;
+
     private void MostrarAtualizacao(EstadoServico e)
     {
         TxtAtualizacao.Text =
             e.Atualizando ? "Atualizando o Zelo…" :
-            e.VersaoDisponivel is not null ? $"Versão nova disponível: {e.VersaoDisponivel} (você tem a {e.Versao})." :
+            VersaoNova(e) is { } nova ? $"Versão nova disponível: {nova} (você tem a {e.Versao})." :
             e.ErroAtualizacao is not null ? e.ErroAtualizacao :
             e.UltimaVerificacaoAtualizacao is not null ? $"Você tem a versão mais recente (consultado {Palavras.Quando(e.UltimaVerificacaoAtualizacao)})." :
             "Ainda não consultou o GitHub.";
         BtnAtualizar.IsEnabled = !e.Atualizando && e.RotinaAtual is null;
-        BtnAtualizar.Content = e.VersaoDisponivel is not null ? "Atualizar agora" : "Procurar atualização";
+        BtnAtualizar.Content = VersaoNova(e) is not null ? "Atualizar agora" : "Procurar atualização";
     }
 
     private void DesenharArco()
@@ -701,7 +705,7 @@ public partial class MainWindow : Window
         if (id == "zelo:backup")
         {
             NavAjustes.IsChecked = true;
-            Dispatcher.BeginInvoke(new Action(() => TituloBackup.BringIntoView()), DispatcherPriority.Loaded);
+            _ = Dispatcher.BeginInvoke(new Action(() => TituloBackup.BringIntoView()), DispatcherPriority.Loaded);
         }
         else if (id.StartsWith("abrir:")) Abrir(id[6..]);
         else if (id.StartsWith("cmd:"))
